@@ -15,8 +15,8 @@
  * Mechanism (Windows only)
  * ------------------------
  * Core Audio session volumes:
- *   IMMDeviceEnumerator -> GetDefaultAudioEndpoint(eRender, eMultimedia)
- *   -> IAudioSessionManager2 -> IAudioSessionEnumerator
+ *   IMMDeviceEnumerator -> EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+ *   -> per endpoint IAudioSessionManager2 -> IAudioSessionEnumerator
  *   -> per session IAudioSessionControl2 (pid, instance id)
  *   -> ISimpleAudioVolume (get/set that session's own level)
  *
@@ -52,8 +52,10 @@
  * Known limits, recorded rather than hidden:
  *   - Sessions are enumerated once, at the start of a read. An app that starts
  *     playing halfway through is not ducked.
- *   - Only the default render endpoint is enumerated. Audio on a second output
- *     device is out of scope.
+ *
+ * Every active output device is covered, not only the default one: a headset
+ * with separate Game and Chat outputs plays a voice call on one and the game
+ * on the other, and "every other app" has to mean both.
  *
  * Dependencies are constructor-injected because vitest cannot mock a CommonJS
  * `require("electron")` inside src/helpers; a unit test hands in fakes rather
@@ -177,9 +179,15 @@ public interface IMMDeviceS {
     [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface);
 }
 
+[Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IMMDeviceCollectionS {
+  int GetCount(out int pcDevices);
+  int Item(int nDevice, out IMMDeviceS ppDevice);
+}
+
 [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 public interface IMMDeviceEnumeratorS {
-  int EnumAudioEndpointsStub();
+  int EnumAudioEndpoints(int dataFlow, int dwStateMask, out IMMDeviceCollectionS ppDevices);
   int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDeviceS ppDevice);
 }
 
@@ -187,21 +195,42 @@ public interface IMMDeviceEnumeratorS {
 public class MMDeviceEnumeratorComObjectS {}
 
 public static class AudioSessions {
-  // Held for the process lifetime so the enumerator never outlives the manager
-  // that produced it.
-  static IAudioSessionManager2 _manager;
+  // Held for the process lifetime so no session outlives the manager that
+  // produced it.
+  static readonly List<object> _keep = new List<object>();
 
-  static IAudioSessionEnumerator Enumerate() {
+  /** Every session on every active render endpoint. */
+  static List<IAudioSessionControl> Sessions() {
+    var all = new List<IAudioSessionControl>();
     var enumerator = new MMDeviceEnumeratorComObjectS() as IMMDeviceEnumeratorS;
-    IMMDeviceS dev;
-    Marshal.ThrowExceptionForHR(enumerator.GetDefaultAudioEndpoint(0, 1, out dev)); // eRender, eMultimedia
-    object mgrObj;
+    IMMDeviceCollectionS devices;
+    Marshal.ThrowExceptionForHR(enumerator.EnumAudioEndpoints(0, 1, out devices)); // eRender, DEVICE_STATE_ACTIVE
+    int deviceCount;
+    Marshal.ThrowExceptionForHR(devices.GetCount(out deviceCount));
     var iid = typeof(IAudioSessionManager2).GUID;
-    Marshal.ThrowExceptionForHR(dev.Activate(ref iid, 23, IntPtr.Zero, out mgrObj)); // CLSCTX_ALL
-    _manager = mgrObj as IAudioSessionManager2;
-    IAudioSessionEnumerator sessions;
-    Marshal.ThrowExceptionForHR(_manager.GetSessionEnumerator(out sessions));
-    return sessions;
+    for (int d = 0; d < deviceCount; d++) {
+      try {
+        IMMDeviceS dev;
+        if (devices.Item(d, out dev) != 0 || dev == null) continue;
+        object mgrObj;
+        if (dev.Activate(ref iid, 23, IntPtr.Zero, out mgrObj) != 0) continue; // CLSCTX_ALL
+        var manager = mgrObj as IAudioSessionManager2;
+        IAudioSessionEnumerator e;
+        if (manager == null || manager.GetSessionEnumerator(out e) != 0 || e == null) continue;
+        _keep.Add(manager);
+        _keep.Add(e);
+        int count;
+        if (e.GetCount(out count) != 0) continue;
+        for (int i = 0; i < count; i++) {
+          IAudioSessionControl ctl;
+          if (e.GetSession(i, out ctl) != 0 || ctl == null) continue;
+          all.Add(ctl);
+        }
+      } catch (Exception) {
+        // One endpoint that fails must not hide the others.
+      }
+    }
+    return all;
   }
 
   static string InstanceId(IAudioSessionControl2 c2) {
@@ -217,15 +246,10 @@ public static class AudioSessions {
   // Every row puts the instance id LAST and never splits on it, because a
   // session instance identifier legitimately contains '|' characters.
 
-  /** Every session on the default render endpoint: pid|volume|state|sysSounds|id */
+  /** Every session on every output device: pid|volume|state|sysSounds|id */
   public static string[] List() {
     var rows = new List<string>();
-    var e = Enumerate();
-    int count;
-    Marshal.ThrowExceptionForHR(e.GetCount(out count));
-    for (int i = 0; i < count; i++) {
-      IAudioSessionControl ctl;
-      if (e.GetSession(i, out ctl) != 0) continue;
+    foreach (var ctl in Sessions()) {
       var c2 = ctl as IAudioSessionControl2;
       var sv = ctl as ISimpleAudioVolume;
       if (c2 == null || sv == null) continue;
@@ -243,12 +267,7 @@ public static class AudioSessions {
 
   /** One session's current level by instance id, or "-1" when it is gone. */
   public static string Peek(string instanceId) {
-    var e = Enumerate();
-    int count;
-    Marshal.ThrowExceptionForHR(e.GetCount(out count));
-    for (int i = 0; i < count; i++) {
-      IAudioSessionControl ctl;
-      if (e.GetSession(i, out ctl) != 0) continue;
+    foreach (var ctl in Sessions()) {
       var c2 = ctl as IAudioSessionControl2;
       var sv = ctl as ISimpleAudioVolume;
       if (c2 == null || sv == null) continue;
@@ -293,17 +312,11 @@ public static class AudioSessions {
       }
     }
     var context = System.Guid.Empty;
-    var e = Enumerate();
-    int count;
-    Marshal.ThrowExceptionForHR(e.GetCount(out count));
-
     var vols = new List<ISimpleAudioVolume>();
     var rows = new List<string>();
     var targets = new List<float>();
 
-    for (int i = 0; i < count; i++) {
-      IAudioSessionControl ctl;
-      if (e.GetSession(i, out ctl) != 0) continue;
+    foreach (var ctl in Sessions()) {
       var c2 = ctl as IAudioSessionControl2;
       var sv = ctl as ISimpleAudioVolume;
       if (c2 == null || sv == null) continue;
@@ -353,12 +366,7 @@ public static class AudioSessions {
     if (ids == null || ids.Length == 0) return 0;
     int restored = 0;
     var context = System.Guid.Empty;
-    var e = Enumerate();
-    int count;
-    Marshal.ThrowExceptionForHR(e.GetCount(out count));
-    for (int i = 0; i < count; i++) {
-      IAudioSessionControl ctl;
-      if (e.GetSession(i, out ctl) != 0) continue;
+    foreach (var ctl in Sessions()) {
       var c2 = ctl as IAudioSessionControl2;
       var sv = ctl as ISimpleAudioVolume;
       if (c2 == null || sv == null) continue;
@@ -591,6 +599,11 @@ class ReadAloudDucking {
 
   get supported() {
     return this.platform === "win32";
+  }
+
+  /** Ducked, or a duck on its way: another caller must not take it over. */
+  get busy() {
+    return this.ducked || Boolean(this._inFlight);
   }
 
   getStatus() {

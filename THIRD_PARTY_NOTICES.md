@@ -49,13 +49,13 @@ SOFTWARE.
 
 ### PrivateTranscribe helper programs
 
-PrivateTranscribe's own code, not a third-party part. The helpers are built from resources/windows-key-listener.c, windows-fast-paste.cs, windows-mic-watch.cs and windows-hold-key.cs in the PrivateTranscribe repository, and are released under the GNU GPL, version 3 or later, like the rest of PrivateTranscribe. windows-key-listener.c arrived with the first commit, which imported the OpenWhispr-derived code, so the OpenWhispr notice covers anything in it that still derives from OpenWhispr.
+PrivateTranscribe's own code, not a third-party part. The helpers are built from resources/windows-key-listener.c, windows-fast-paste.cs, windows-mic-watch.cs, windows-hold-key.cs and windows-audio-meter.cs in the PrivateTranscribe repository, and are released under the GNU GPL, version 3 or later, like the rest of PrivateTranscribe. windows-key-listener.c arrived with the first commit, which imported the OpenWhispr-derived code, so the OpenWhispr notice covers anything in it that still derives from OpenWhispr.
 
 - Version: same as the app
 - Licence: `GPL-3.0-or-later`
 - Copyright (c) 2026 Julsgaard Products
 - Source: <https://github.com/PrivateTranscribe/PrivateTranscribe>
-- Files: `bin/windows-key-listener.exe`, `bin/windows-fast-paste.exe`, `bin/windows-mic-watch.exe`, `bin/windows-hold-key.exe`, `readaloud-copy-worker.ps1`, `readaloud-highlight-worker.ps1`
+- Files: `bin/windows-key-listener.exe`, `bin/windows-fast-paste.exe`, `bin/windows-mic-watch.exe`, `bin/windows-hold-key.exe`, `bin/windows-audio-meter.exe`, `readaloud-copy-worker.ps1`, `readaloud-highlight-worker.ps1`
 
 Licence text: GNU General Public License v3.0, under "Full licence texts" at the end.
 

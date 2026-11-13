@@ -23,6 +23,7 @@ const ReadAloudDucking = require("./readAloudDucking");
 const { buildExcludedPids } = require("./readAloudDucking");
 const { checkReadAloudLanguage } = require("./readAloudLanguageGuard");
 const { ConverseSession } = require("./converseSession");
+const { setupNarratorHandlers } = require("./narratorIpc");
 const { checkFolderTrust, trustFolder, forgetFolder } = require("./converseAgent");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
@@ -339,6 +340,17 @@ class IPCHandlers {
     // never stop the run that replaced it.
     this.fileTranscriptionJobs = new Map();
     this.setupHandlers();
+    // The agent narrator (Experimental): its channels live in narratorIpc.js.
+    this.narrator = setupNarratorHandlers({
+      ipcMain,
+      app,
+      shell,
+      windowManager: this.windowManager,
+      kokoroManager: this.kokoroManager,
+      // Read Aloud's way of lowering other apps, crash repair included.
+      ducking: this.readAloudDucking,
+      broadcast: (channel, payload) => this.broadcastToWindows(channel, payload),
+    });
 
     // Surface GPU→CPU fallback transitions to every window so the user gets
     // immediate feedback instead of a silent engine downgrade.
@@ -404,6 +416,7 @@ class IPCHandlers {
   /** Stop every engine that holds model weights open, so a reset can delete them. */
   async releaseModelFiles() {
     this.kokoroManager?.unloadEngine?.();
+    this.narrator?.dispose();
     const modelManager = require("./modelManagerBridge").default;
     await Promise.allSettled([
       this.whisperManager?.stopServer?.(),
