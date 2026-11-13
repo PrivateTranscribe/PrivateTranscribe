@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- The Read Aloud shortcut reads the text you selected again. Since 0.25.0 it read whatever was already on the clipboard instead, and the word being spoken was not marked in the app you read from. The installer had also started to carry the project's docs, tests and build scripts, which it no longer does.
 - A new or corrected API key for AI cleanup is used by the very next dictation. Before, dictation could keep using the old key for up to an hour, so cleanup could keep failing without a message while the Test button worked.
 - A local AI model now becomes the active model when its download finishes, even if you have gone to another page, unless you chose another provider or model meanwhile. Before, it sat unused, and if it was your first local model, dictation was pasted without cleanup.
 - The control panel no longer stops at "Something went wrong" on every start when the history cannot be read from the database. It opens and shows an empty history.
