@@ -373,26 +373,26 @@ type ClipboardKeeper = {
  *
  * The copy lives in the test app's memory and nowhere else: a clipboard can
  * hold a password, so it is never printed or written to disk. It covers what
- * the app's own snapshot covers, which is text, HTML, RTF and an image. Copied
- * files and formats private to one program do not come back.
+ * the app's own snapshot covers, which is text, HTML, RTF, an image and a list
+ * of copied files. Formats private to one program do not come back.
  */
 async function keepDevelopersClipboard(electronApp: ElectronApplication): Promise<void> {
   await installAppRequire(electronApp);
-  await electronApp.evaluate(({ clipboard }) => {
+  await electronApp.evaluate(async ({ clipboard }) => {
     const g = globalThis as unknown as ClipboardKeeper;
     const { snapshotClipboard } = g.__ptE2eRequire("src/helpers/clipboardSnapshot.js");
-    g.__ptE2eLive.developersClipboard = snapshotClipboard(clipboard);
+    g.__ptE2eLive.developersClipboard = await snapshotClipboard(clipboard);
   });
 }
 
 async function restoreDevelopersClipboard(electronApp: ElectronApplication): Promise<void> {
-  await electronApp.evaluate(({ clipboard }) => {
+  await electronApp.evaluate(async ({ clipboard, ClipboardItem }) => {
     const g = globalThis as unknown as ClipboardKeeper;
     const kept = g.__ptE2eLive?.developersClipboard;
     if (!kept) return;
     const { restoreClipboard } = g.__ptE2eRequire("src/helpers/clipboardSnapshot.js");
     // An empty clipboard is cleared, or the marker would stay on it.
-    restoreClipboard(clipboard, kept, { clearWhenEmpty: true });
+    await restoreClipboard(clipboard, ClipboardItem, kept, { clearWhenEmpty: true });
     g.__ptE2eLive.developersClipboard = null;
   });
 }
