@@ -312,8 +312,9 @@ class WhisperServerManager {
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     this.activeTranscriptions = 0;
-    // File transcriptions among them. A dictation that needs another model is
-    // refused while one runs, since the restart would kill the file run.
+    // File runs in progress, from before their model starts loading until
+    // their last piece (beginFileRun/endFileRun). A dictation that needs
+    // another model is refused meanwhile, since the restart would kill them.
     this.activeFileTranscriptions = 0;
     // A settings change arrived while a transcription was in flight; the
     // restart it needs happens on the first start after that work.
@@ -825,20 +826,18 @@ class WhisperServerManager {
       return this.startupPromise;
     }
 
-    // A different model was requested (or no startup was in progress).
-    // We must serialise through the existing in-flight promise (if any) so that
-    // we never run _doStart concurrently.  Assign both startupPromise and
-    // modelPath *before* any await so that a concurrent caller arriving while
-    // we are awaiting stop() or _doStart() will see the new values and share
-    // this promise rather than spawning a second server process.
     // A file run can take an hour. Restarting under it for a dictation on
     // another model threw away every piece it had finished, so the dictation
-    // is refused instead and the user is told why.
-    if (
-      options.fileMode !== true &&
-      this.activeFileTranscriptions > 0 &&
-      !(this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime)
-    ) {
+    // is refused instead and the user is told why. Checked again after any
+    // startup this one queues behind, which may be the file's own.
+    const refuseForFileRun = () => {
+      if (
+        options.fileMode === true ||
+        this.activeFileTranscriptions === 0 ||
+        (this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime)
+      ) {
+        return;
+      }
       debugLogger.info("whisper-server is transcribing a file; refusing a restart for", {
         modelPath,
         loadedModelPath: this.loadedModelPath,
@@ -846,8 +845,15 @@ class WhisperServerManager {
       throw Object.assign(new Error("A file is being transcribed"), {
         code: WHISPER_BUSY_WITH_FILE,
       });
-    }
+    };
+    refuseForFileRun();
 
+    // A different model was requested (or no startup was in progress).
+    // We must serialise through the existing in-flight promise (if any) so that
+    // we never run _doStart concurrently.  Assign both startupPromise and
+    // modelPath *before* any await so that a concurrent caller arriving while
+    // we are awaiting stop() or _doStart() will see the new values and share
+    // this promise rather than spawning a second server process.
     const prev = this.startupPromise ?? Promise.resolve();
     this.modelPath = modelPath; // claim the slot early
 
@@ -869,6 +875,7 @@ class WhisperServerManager {
           return;
         }
         if (await this._keepBusyServer(modelPath, wantsPrintRealtime)) return;
+        refuseForFileRun();
         if (this.process) await this.stop();
         this.restartPendingForSettings = false;
         await this._doStart(modelPath, options);
@@ -1410,13 +1417,24 @@ class WhisperServerManager {
     return this.activeTranscriptions > 0;
   }
 
+  /**
+   * A file run holds the server from before its model starts loading until
+   * its last piece. Counting only inside transcribe() left the model load
+   * open, and a dictation queued behind it restarted the server anyway.
+   */
+  beginFileRun() {
+    this.activeFileTranscriptions += 1;
+  }
+
+  endFileRun() {
+    this.activeFileTranscriptions = Math.max(0, this.activeFileTranscriptions - 1);
+  }
+
   async transcribe(audioBuffer, options = {}) {
     if (!this.ready || !this.process) {
       throw new Error("whisper-server is not running");
     }
-    const isFileRun = options?.fileMode === true;
     this.activeTranscriptions += 1;
-    if (isFileRun) this.activeFileTranscriptions += 1;
     this.lastUsedTime = Date.now();
     this.stoppedDueToIdle = false;
     this._scheduleIdleCheck();
@@ -1708,9 +1726,6 @@ class WhisperServerManager {
       });
     } finally {
       this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
-      if (isFileRun) {
-        this.activeFileTranscriptions = Math.max(0, this.activeFileTranscriptions - 1);
-      }
     }
   }
 

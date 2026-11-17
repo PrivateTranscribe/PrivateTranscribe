@@ -147,6 +147,49 @@ describe("whisper-server start while a transcription is running", () => {
       expect(manager.stop).not.toHaveBeenCalled();
     });
 
+    it("refuses a dictation queued behind the file's own model load", async () => {
+      // The file run counts as busy from before its model loads. A dictation
+      // that arrives during the load passes the first check (the server still
+      // holds its model), queues behind the load, and used to stop the
+      // server the file had just started.
+      manager.activeFileTranscriptions = 0;
+      let finishLoad!: () => void;
+      manager._doStart = vi.fn(
+        (path: string) =>
+          new Promise<void>((resolve) => {
+            finishLoad = () => {
+              manager.process = { pid: undefined };
+              manager.ready = true;
+              manager.loadedModelPath = path;
+              resolve();
+            };
+          })
+      );
+      manager.activeTranscriptions = 0;
+
+      manager.beginFileRun();
+      const fileStart = manager.start("/models/ggml-small.en-tdrz.bin", {
+        fileMode: true,
+        printRealtime: false,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      manager.loadedModelPath = MODEL;
+      const dictation = manager.start(MODEL);
+      const dictationResult = dictation.catch((error: any) => error);
+      await vi.advanceTimersByTimeAsync(0);
+      finishLoad();
+      await fileStart;
+
+      expect(await dictationResult).toMatchObject({
+        code: WhisperServerManager.WHISPER_BUSY_WITH_FILE,
+      });
+      expect(manager._doStart).toHaveBeenCalledOnce();
+      expect(manager.stop).toHaveBeenCalledOnce();
+      expect(manager.loadedModelPath).toBe("/models/ggml-small.en-tdrz.bin");
+      manager.endFileRun();
+      expect(manager.activeFileTranscriptions).toBe(0);
+    });
+
     it("never refuses a file run itself", async () => {
       await manager.start("/models/ggml-small.bin", { fileMode: true });
 
