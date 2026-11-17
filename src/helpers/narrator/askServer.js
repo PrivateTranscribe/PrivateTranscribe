@@ -282,7 +282,10 @@ class NarratorAskServer {
         this.ask(question, { signal: controller.signal }),
         timeout,
       ]);
-      send(res, 200, result);
+      // Words for the chat, such as a voice that is not downloaded, travel the
+      // way a refused question does: the bridge hands a 400's error to the chat.
+      if (typeof result?.error === "string") send(res, 400, { error: result.error });
+      else send(res, 200, result);
     } catch (error) {
       this.log("Narrator could not ask by voice", { error: error.message });
       send(res, 200, { answer: null, reason: "not_active" });

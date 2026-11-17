@@ -212,6 +212,69 @@ describe("the voice answer window", () => {
     }
   });
 
+  describe("between a question's chime and its first word", () => {
+    const announced = (alive = () => true, until = Infinity) => {
+      const recorder = { start: vi.fn(), stop: vi.fn(), discard: vi.fn() };
+      const answers = new VoiceAnswers({ recorder });
+      const end = answers.announce({ isAlive: alive, until });
+      return { answers, recorder, end };
+    };
+
+    it("takes a tap and a hold, and records neither", () => {
+      const t = announced();
+      expect(t.answers.onKey({ type: "toggle" })).toBe(true);
+      expect(t.answers.onKey({ type: "start", holdToken: 1 })).toBe(true);
+      expect(t.answers.onKey({ type: "stop" })).toBe(true);
+      expect(t.recorder.start).not.toHaveBeenCalled();
+    });
+
+    it("lets a dictation that began before the chime end as a dictation", () => {
+      const t = announced();
+      expect(t.answers.onKey({ type: "stop" })).toBe(false);
+    });
+
+    it("takes the release of a hold that is let go once the question is being said", () => {
+      const t = announced();
+      expect(t.answers.onKey({ type: "start", holdToken: 1 })).toBe(true);
+      t.answers.ask({
+        chatName: "Export fix",
+        options: ["Merge it", "Not now"],
+        language: "en",
+        say: async () => "done",
+        stopSpeech: () => {},
+      });
+      expect(t.answers.onKey({ type: "stop" })).toBe(true);
+      expect(t.recorder.start).not.toHaveBeenCalled();
+      // The next release is not the taken hold's: it ends a dictation.
+      expect(t.answers.onKey({ type: "stop" })).toBe(false);
+    });
+
+    it("still takes a press for 3 s after the question was dropped unsaid, then dictates", async () => {
+      const t = announced();
+      t.end();
+      expect(t.answers.onKey({ type: "toggle" })).toBe(true);
+      await vi.advanceTimersByTimeAsync(GRACE_MS);
+      expect(t.answers.onKey({ type: "toggle" })).toBe(false);
+    });
+
+    it("gives the key back at once when the question was stopped, not dropped", () => {
+      const t = announced();
+      t.end({ grace: false });
+      expect(t.answers.onKey({ type: "toggle" })).toBe(false);
+    });
+
+    it("never holds the key past the question's own limits", async () => {
+      let alive = true;
+      const gone = announced(() => alive);
+      alive = false;
+      expect(gone.answers.onKey({ type: "toggle" })).toBe(false);
+
+      const late = announced(() => true, Date.now() + 1000);
+      await vi.advanceTimersByTimeAsync(1001);
+      expect(late.answers.onKey({ type: "toggle" })).toBe(false);
+    });
+  });
+
   it("answers while the question is still being said, and stops saying it", () => {
     const t = setup();
     expect(t.hold()).toBe(true);
@@ -235,6 +298,35 @@ describe("the voice answer window", () => {
     expect(t.answers.onKey({ type: "toggle" })).toBe(true);
     expect(t.recorder.stop).not.toHaveBeenCalled();
     expect(t.answers.onKey({ type: "toggle" })).toBe(true);
+    expect(t.recorder.stop).toHaveBeenCalledTimes(1);
+  });
+
+  // "Tap or hold" is the default key mode. On Windows the key's presses are
+  // sorted into taps and holds before they reach the answer window: a tap
+  // arrives as one "toggle" when the key comes up, a hold as "start" and
+  // "stop". So a tap's key-up does not end the answer it began.
+  it("takes a tap in the default key mode as a tap: recording runs on after the key is up", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ActivationGestureController = require("../../../src/helpers/activationGestureController");
+    const t = setup();
+    t.handle.questionDone();
+    const key = new ActivationGestureController({
+      mode: "tapHold",
+      onTap: () => t.answers.onKey({ type: "toggle" }),
+      onHoldStart: () => t.answers.onKey({ type: "start", holdToken: 1 }),
+      onHoldEnd: () => t.answers.onKey({ type: "stop" }),
+    });
+
+    key.keyDown();
+    await vi.advanceTimersByTimeAsync(60);
+    key.keyUp();
+    expect(t.recorder.start).toHaveBeenCalledTimes(1);
+    expect(t.recorder.stop).not.toHaveBeenCalled();
+
+    // The next tap ends it, as it ends a dictation.
+    key.keyDown();
+    await vi.advanceTimersByTimeAsync(60);
+    key.keyUp();
     expect(t.recorder.stop).toHaveBeenCalledTimes(1);
   });
 

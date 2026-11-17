@@ -202,6 +202,16 @@ describe("ask_by_voice end to end", () => {
     expect(asked.map((question) => question.sessionId)).toEqual([SESSION, SESSION, SESSION]);
   });
 
+  it("hands the chat the app's own words when the question could not be said", async () => {
+    await server.start();
+    const why = "PrivateTranscribe's Danish voice is not downloaded, so the question was not said.";
+    answer = async () => ({ answer: null, reason: "not_active", error: why });
+    const { result, answer: got } = await bridge().call(QUESTION);
+    expect(got).toBeNull();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(why);
+  });
+
   it("returns not_active at once when the app is not running", async () => {
     const started = Date.now();
     const { answer: got } = await bridge().call(QUESTION);

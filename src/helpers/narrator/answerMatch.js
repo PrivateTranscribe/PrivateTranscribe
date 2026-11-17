@@ -16,6 +16,8 @@
  *   "thank you"              [Merge it, Not now]            → none
  *   "don't merge it"         [Merge it, Not now]            → none: it says the opposite
  *   "no, not now"            [Merge it, Not now]            → Not now
+ *   "ja"                     [Ja, merge, Ikke nu]           → Ja, merge: the one that begins with it
+ *   "ret to" (Danish)        [Ret 1, Ret 2]                 → Ret 2
  */
 
 /** Spoken numbers, so "fix one" and "Fix 1" are the same words. */
@@ -33,6 +35,37 @@ const NUMBER_WORDS = {
   ten: "10",
 };
 
+/**
+ * Danish spoken numbers, read only when the question is Danish: "to" and
+ * "fire" are other words in English. "en" and "et" are left out. They are
+ * also "a", and as 1 "en ny fil" would pick "Fil 1" over "En ny fil".
+ */
+const DANISH_NUMBER_WORDS = {
+  nul: "0",
+  to: "2",
+  tre: "3",
+  fire: "4",
+  fem: "5",
+  seks: "6",
+  syv: "7",
+  otte: "8",
+  ni: "9",
+  ti: "10",
+};
+
+/** A plain yes or no. Said alone, it picks the one label that opens with it. */
+const YES_NO = new Set(["ja", "nej", "yes", "no"]);
+
+/**
+ * Whether a label opens with `word` as an answer of its own, set off by a
+ * comma or the like: "Ja, merge" and "No. Wait for CI", but not "No problem,
+ * merge it", where the first word is part of saying yes.
+ */
+function opensWith(option, word) {
+  const text = String(option).normalize("NFKC").trim().toLowerCase();
+  return text.startsWith(word) && /^\s*[,.;:!?–—]/.test(text.slice(word.length));
+}
+
 /** Sounds and padding around an answer, dropped unless a label uses the word. */
 const FILLERS = new Set([
   "uh",
@@ -48,6 +81,7 @@ const FILLERS = new Set([
   "øh",
   "øhm",
   "please",
+  "tak",
   "okay",
   "ok",
   "so",
@@ -91,15 +125,16 @@ const MIN_MARGIN = 0.15;
 /** An answer is a few words; longer speech is talk, not a pick. */
 const MAX_ANSWER_WORDS = 12;
 
-function words(text) {
+function words(text, language) {
   if (typeof text !== "string") return [];
+  const danish = language === "da";
   return text
     .normalize("NFKC")
     .toLowerCase()
     .replace(/['’]/g, "")
     .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean)
-    .map((word) => NUMBER_WORDS[word] || word);
+    .map((word) => NUMBER_WORDS[word] || (danish && DANISH_NUMBER_WORDS[word]) || word);
 }
 
 /**
@@ -120,15 +155,30 @@ function score(answer, label) {
 /**
  * @param {string} text   what speech recognition heard
  * @param {string[]} options   the question's own labels
+ * @param {{language?: "da"|"en"}} [opts]   the language the question was said in
  * @returns {{label: string, index: number, score: number} | null}
  */
-function matchAnswer(text, options) {
+function matchAnswer(text, options, { language } = {}) {
   if (!Array.isArray(options) || options.length === 0) return null;
-  const labels = options.map((option) => words(option));
+  const labels = options.map((option) => words(option, language));
   const labelWords = new Set(labels.flat());
-  const answer = words(text).filter((word) => !FILLERS.has(word) || labelWords.has(word));
+  const answer = words(text, language).filter((word) => !FILLERS.has(word) || labelWords.has(word));
   if (answer.length === 0 || answer.length > MAX_ANSWER_WORDS) return null;
   const negated = answer.some((word) => NEGATIONS.has(word));
+
+  // "Ja" to [Ja, merge / Ikke nu]: one word of a two-word label scores under
+  // the bar, yet nothing else was meant. Two labels that open with it, or
+  // none, are ranked as usual below.
+  if (new Set(answer).size === 1 && YES_NO.has(answer[0])) {
+    // A label that is the word alone counts too, and then wins the ranking.
+    const starts = options.flatMap((option, index) =>
+      opensWith(option, answer[0]) || labels[index].join(" ") === answer[0] ? [index] : []
+    );
+    if (starts.length === 1) {
+      const [index] = starts;
+      return { label: options[index], index, score: score(answer, labels[index]) };
+    }
+  }
 
   const ranked = labels
     .map((label, index) => {
