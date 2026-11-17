@@ -5,6 +5,15 @@
 ### Fixed
 
 - A file you copied in File Explorer is still on the clipboard after a dictation is pasted, and after the Read Aloud shortcut reads your selection. Before, only the dictated text was left, or nothing at all after Read Aloud, so pasting no longer gave you the file.
+- A dictation that needs another Whisper model than the file being transcribed is refused, with the notice "A file is being transcribed". Before, it restarted the engine under the file, which then failed partway and lost what it had transcribed. This happened with English speaker labels, which run on their own model.
+- The dictation overlay reloads itself if its page crashes. Before, the hotkey did nothing until the app was restarted.
+- If the program that watches your hotkey on Windows crashes, it is started again, up to twice, and after that a notice says so. Before, Hold and Both modes stopped working without a word. A hotkey that program cannot watch now gets a notice too.
+- When AI cleanup is on and a dictation is pasted without it, a notice says why, such as a refused API key or no connection, once for each kind of problem. Only the key of the provider you chose counts now. Before, a key for another provider made cleanup look ready, and dictations were pasted raw with no word why.
+- "Update correction" on the Correction Memory page replaces the old target. Before, both stayed in the list, and the old one could keep winning.
+- The GPU engine card shows the error and offers the download again when a download fails or is cancelled, also one started elsewhere. Before, it said "Downloading" until you left Settings.
+- The Action Engine no longer offers "Switch dictation mode" or the "Switch to Push-to-Talk" template, which never switched anything. Actions of that type you already saved still show.
+- Deleting the Whisper model you dictate with no longer switches dictation to the English-only speaker model.
+- With the assistant name field cleared, the AI answers to "PrivateTranscribe", the name the AI Enhancement page shows. Before, it answered only to "Assistant".
 
 ## 0.26.2 - 2026-11-13
 
