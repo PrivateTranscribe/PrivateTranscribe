@@ -1,5 +1,4 @@
 import { getModelProvider, getCloudModel } from "../models/ModelRegistry";
-import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy } from "../utils/retry";
 import {
   API_ENDPOINTS,
@@ -191,15 +190,10 @@ class ReasoningService {
   // The one cleanup running now, or null. Each call clears only its own, so a
   // request abandoned at the deadline can't free a newer one's place.
   private activeRequest: object | null = null;
-  private apiKeyCache: SecureCache<string>;
+  // Stops the cleanup running now and frees its place; null when none runs.
+  private cancelActive: (() => void) | null = null;
   private openAiEndpointPreference = new Map<string, "responses" | "chat">();
   private static readonly OPENAI_ENDPOINT_PREF_STORAGE_KEY = "openAiEndpointPreference";
-  private cacheCleanupStop: (() => void) | undefined;
-
-  constructor() {
-    this.apiKeyCache = new SecureCache();
-    this.cacheCleanupStop = this.apiKeyCache.startAutoCleanup();
-  }
 
   private getCustomDictionary(): string[] {
     if (typeof window === "undefined" || !window.localStorage) return [];
@@ -473,41 +467,32 @@ class ReasoningService {
       return trimmedKey;
     }
 
-    let apiKey = this.apiKeyCache.get(provider);
+    // Asked from the main process every time and never kept here. Keys are
+    // saved in the control panel window while dictation runs in the overlay
+    // window, so a copy held by this window would outlive a key change made
+    // in the other one.
+    let apiKey: string | undefined;
+    try {
+      const keyGetters = {
+        openai: () => window.electronAPI.getOpenAIKey(),
+        anthropic: () => window.electronAPI.getAnthropicKey(),
+        gemini: () => window.electronAPI.getGeminiKey(),
+        groq: () => window.electronAPI.getGroqKey(),
+      };
+      apiKey = (await keyGetters[provider]()) ?? undefined;
 
-    logger.logReasoning(`${provider.toUpperCase()}_KEY_RETRIEVAL`, {
-      provider,
-      fromCache: !!apiKey,
-      cacheSize: this.apiKeyCache.size || 0,
-    });
-
-    if (!apiKey) {
-      try {
-        const keyGetters = {
-          openai: () => window.electronAPI.getOpenAIKey(),
-          anthropic: () => window.electronAPI.getAnthropicKey(),
-          gemini: () => window.electronAPI.getGeminiKey(),
-          groq: () => window.electronAPI.getGroqKey(),
-        };
-        apiKey = (await keyGetters[provider]()) ?? undefined;
-
-        logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCHED`, {
-          provider,
-          hasKey: !!apiKey,
-          keyLength: apiKey?.length || 0,
-          keyPreview: apiKey ? "[configured]" : "none",
-        });
-
-        if (apiKey) {
-          this.apiKeyCache.set(provider, apiKey);
-        }
-      } catch (error) {
-        logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCH_ERROR`, {
-          provider,
-          error: (error as Error).message,
-          stack: (error as Error).stack,
-        });
-      }
+      logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCHED`, {
+        provider,
+        hasKey: !!apiKey,
+        keyLength: apiKey?.length || 0,
+        keyPreview: apiKey ? "[configured]" : "none",
+      });
+    } catch (error) {
+      logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCH_ERROR`, {
+        provider,
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
     }
 
     if (!apiKey) {
@@ -729,11 +714,25 @@ class ReasoningService {
       // to start first.
       const startupMs = provider === "local" ? DICTATION_CLEANUP_TIMEOUT.LOCAL_STARTUP_MS : 0;
       const abandon = new AbortController();
-      result = await this.withDeadline(
-        this.runProvider(provider, text, trimmedModel, model, agentName, config, abandon.signal),
-        timeoutMs + startupMs + DEADLINE_GRACE_MS,
-        () => abandon.abort()
-      );
+      const cancelled = new Promise<never>((_, reject) => {
+        if (!request) return;
+        this.cancelActive = () => {
+          abandon.abort();
+          // A local model runs in the main process, out of the signal's reach.
+          if (provider === "local") {
+            void window.electronAPI?.cancelLocalReasoning?.()?.catch(() => {});
+          }
+          reject(new Error("AI cleanup cancelled"));
+        };
+      });
+      result = await Promise.race([
+        this.withDeadline(
+          this.runProvider(provider, text, trimmedModel, model, agentName, config, abandon.signal),
+          timeoutMs + startupMs + DEADLINE_GRACE_MS,
+          () => abandon.abort()
+        ),
+        cancelled,
+      ]);
 
       // A coding prompt is dictated prose for another agent, not generated code.
       // Throw so the dictation pipeline preserves the original words on failure.
@@ -771,6 +770,7 @@ class ReasoningService {
     } finally {
       if (request && this.activeRequest === request) {
         this.activeRequest = null;
+        this.cancelActive = null;
       }
     }
   }
@@ -794,6 +794,22 @@ class ReasoningService {
       limits.BASE_MS + text.length * limits.PER_CHARACTER_MS,
       longSession ? limits.LONG_SESSION_MAX_MS : limits.MAX_MS
     );
+  }
+
+  /**
+   * Stop the cleanup that is running now, if any. Its caller gets a rejection
+   * and the next cleanup can start at once. Without this a cancelled dictation
+   * kept the service busy until its provider answered or the deadline passed.
+   */
+  cancelActiveRequest(): boolean {
+    const cancel = this.cancelActive;
+    if (!cancel) return false;
+    // Freed here, not when the rejection has travelled up: the next dictation
+    // may ask for its cleanup before then.
+    this.cancelActive = null;
+    this.activeRequest = null;
+    cancel();
+    return true;
   }
 
   /**
@@ -1487,24 +1503,6 @@ class ReasoningService {
         name: (error as Error).name,
       });
       return false;
-    }
-  }
-
-  clearApiKeyCache(provider?: "openai" | "anthropic" | "gemini" | "groq" | "custom"): void {
-    if (provider) {
-      if (provider !== "custom") {
-        this.apiKeyCache.delete(provider);
-      }
-      logger.logReasoning("API_KEY_CACHE_CLEARED", { provider });
-    } else {
-      this.apiKeyCache.clear();
-      logger.logReasoning("API_KEY_CACHE_CLEARED", { provider: "all" });
-    }
-  }
-
-  destroy(): void {
-    if (this.cacheCleanupStop) {
-      this.cacheCleanupStop();
     }
   }
 }

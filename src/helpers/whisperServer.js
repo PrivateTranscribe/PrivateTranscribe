@@ -75,6 +75,11 @@ const STARTUP_TIMEOUT_MS = 60000;
 const CUDA_RETRY_BACKOFF_MS = [60 * 1000, 5 * 60 * 1000, 30 * 60 * 1000];
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
+// While a server that is busy transcribing does not answer its health check,
+// start() probes it again at this pause, and for no longer than the limit. A
+// server silent for that long is treated as hung and restarted.
+const BUSY_SERVER_RECHECK_MS = 1000;
+const BUSY_SERVER_WAIT_LIMIT_MS = 30000;
 const DEFAULT_INPUT_EXTENSION = ".webm";
 const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
 const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
@@ -305,6 +310,9 @@ class WhisperServerManager {
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     this.activeTranscriptions = 0;
+    // A settings change arrived while a transcription was in flight; the
+    // restart it needs happens on the first start after that work.
+    this.restartPendingForSettings = false;
     this.stdoutCapture = null;
     this.printRealtimeEnabled = false;
   }
@@ -456,6 +464,21 @@ class WhisperServerManager {
   }
 
   /**
+   * Stop the server so a changed startup setting takes effect on its next
+   * start. A stop kills whatever the server is transcribing, so while work is
+   * in flight the stop is left to the first start() after it. A caller that
+   * skips start() for a warm server checks restartPendingForSettings first.
+   */
+  async _stopForSettingsChange() {
+    if (this.process && this.activeTranscriptions > 0) {
+      this.restartPendingForSettings = true;
+      debugLogger.info("WhisperServer: settings change waits for the running transcription");
+      return;
+    }
+    await this.stop();
+  }
+
+  /**
    * Change the CPU thread count. Unlike most tuning this is a server startup
    * argument, so an already-running server has to be stopped; it restarts with
    * the new count on the next transcription.
@@ -467,7 +490,7 @@ class WhisperServerManager {
     if (this.threadSetting === next) return;
 
     this.threadSetting = next;
-    await this.stop();
+    await this._stopForSettingsChange();
     debugLogger.info("WhisperServer: thread count changed", {
       setting: next === 0 ? "auto" : next,
       resolved: resolveWhisperThreads(next),
@@ -498,7 +521,7 @@ class WhisperServerManager {
       this._cudaBlockedByPolicy = false;
     }
     this.cachedServerBinaryPath = null;
-    await this.stop();
+    await this._stopForSettingsChange();
     debugLogger.info("WhisperServer: forceCpu applied", {
       forceCpu: value,
       stoppedWrongModeServer: !!activeBinaryIsWrongForMode,
@@ -518,7 +541,7 @@ class WhisperServerManager {
     this._lastCudaStartupFailure = null;
     this._cudaBlockedByPolicy = false;
     if (stopRunningServer && this.process) {
-      await this.stop();
+      await this._stopForSettingsChange();
     }
   }
 
@@ -751,21 +774,31 @@ class WhisperServerManager {
   async start(modelPath, options = {}) {
     // A warm CPU-fallback server must not keep serving past the CUDA retry
     // window, otherwise the automatic retry never runs. Force a restart so the
-    // next startup attempts the CUDA binary again.
+    // next startup attempts the CUDA binary again. Not under a transcription
+    // in flight, though: the restart would kill it, and the retry is just as
+    // due on the next start.
     const cudaRetryWanted =
       !this.forceCpu &&
       this.cudaDisabledForSession &&
       this.isCudaRetryDue() &&
+      this.activeTranscriptions === 0 &&
       this.ready &&
       this.activeServerBinaryPath &&
       !this.isCudaServerBinaryPath(this.activeServerBinaryPath) &&
       !!gpuBinaryManager.getCudaBinaryPath();
+
+    // A settings change that had to wait for a transcription is applied by
+    // the first start after it, through the ordinary restart below. The flag
+    // stays set until that restart really happens.
+    const settingsRestartDue = () =>
+      this.restartPendingForSettings && this.activeTranscriptions === 0;
 
     // Fast path: server is already running with the right model and no startup
     // is in progress.  Just bump the usage timestamp and return immediately.
     const wantsPrintRealtime = options.printRealtime === true;
     if (
       !cudaRetryWanted &&
+      !settingsRestartDue() &&
       this.ready &&
       this.loadedModelPath === modelPath &&
       this.printRealtimeEnabled === wantsPrintRealtime &&
@@ -803,6 +836,7 @@ class WhisperServerManager {
         // become ready for this model (e.g. from a concurrent caller).
         if (
           !cudaRetryWanted &&
+          !settingsRestartDue() &&
           this.ready &&
           this.loadedModelPath === modelPath &&
           this.printRealtimeEnabled === wantsPrintRealtime
@@ -812,7 +846,9 @@ class WhisperServerManager {
           this._scheduleIdleCheck();
           return;
         }
+        if (await this._keepBusyServer(modelPath, wantsPrintRealtime)) return;
         if (this.process) await this.stop();
+        this.restartPendingForSettings = false;
         await this._doStart(modelPath, options);
       });
 
@@ -824,6 +860,52 @@ class WhisperServerManager {
         this.startupPromise = null;
       }
     });
+  }
+
+  /**
+   * A restart kills whatever the server is transcribing. One failed health
+   * probe on a busy PC marks a working server not ready, and the next
+   * dictation's start then restarted it under a file transcription that was
+   * minutes in. While the server holds the model asked for and has work in
+   * flight, ask it again and keep it once it answers. A server that stays
+   * silent is restarted when the work has ended or the wait limit has passed,
+   * whichever comes first.
+   *
+   * @returns {Promise<boolean>} true when the running server is kept.
+   */
+  async _keepBusyServer(modelPath, wantsPrintRealtime) {
+    const busyProcess = this.process;
+    const holdsTheModel = () =>
+      this.process === busyProcess &&
+      this.loadedModelPath === modelPath &&
+      this.printRealtimeEnabled === wantsPrintRealtime;
+    if (!busyProcess || this.activeTranscriptions === 0 || !holdsTheModel()) return false;
+
+    const waitStarted = Date.now();
+    debugLogger.info("whisper-server is busy and marked not ready; probing before a restart");
+    for (;;) {
+      const healthy = await this.checkHealth();
+      if (!holdsTheModel()) return false;
+      if (healthy) {
+        debugLogger.info("whisper-server answers while busy; keeping it", {
+          waitedMs: Date.now() - waitStarted,
+        });
+        this.ready = true;
+        this.lastUsedTime = Date.now();
+        this.stoppedDueToIdle = false;
+        this._scheduleIdleCheck();
+        return true;
+      }
+      const waitedMs = Date.now() - waitStarted;
+      if (this.activeTranscriptions === 0 || waitedMs >= BUSY_SERVER_WAIT_LIMIT_MS) {
+        debugLogger.warn("whisper-server did not answer; restarting it", {
+          waitedMs,
+          activeTranscriptions: this.activeTranscriptions,
+        });
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, BUSY_SERVER_RECHECK_MS));
+    }
   }
 
   async _doStart(modelPath, options = {}) {
@@ -1008,6 +1090,11 @@ class WhisperServerManager {
       throw error;
     }
 
+    // stop() gives up on a process that does not close within five seconds,
+    // so this one can still be alive when the next server has taken its place.
+    // Its late events must not touch state that describes that next server.
+    const child = this.process;
+
     // The argv this process was handed, taken from the same array that was
     // passed to spawn() rather than rebuilt afterwards, request path masked.
     this.lastSpawn = {
@@ -1021,6 +1108,7 @@ class WhisperServerManager {
     };
 
     this.process.stdout.on("data", (data) => {
+      if (this.process !== child) return;
       const text = data.toString();
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
       this.scanForBackend(text);
@@ -1033,6 +1121,7 @@ class WhisperServerManager {
       // the request path, and startup errors quote this buffer.
       const shown = maskRequestPath(text, requestPathPrefix);
       stderrBuffer = appendBoundedText(stderrBuffer, shown);
+      if (this.process !== child) return;
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
       this.scanForBackend(text);
       debugLogger.debug("whisper-server stderr", { data: shown.trim() });
@@ -1047,12 +1136,13 @@ class WhisperServerManager {
         syscall: error.syscall,
         serverBinary,
       });
-      this.ready = false;
+      if (this.process === child) this.ready = false;
     });
 
     this.process.on("close", (code) => {
       exitCode = code;
       debugLogger.debug("whisper-server process exited", { code });
+      if (this.process !== child) return;
       this.ready = false;
       this.printRealtimeEnabled = false;
       this.stdoutCapture = null;
@@ -1763,6 +1853,9 @@ class WhisperServerManager {
           timeout: timeoutMs,
         },
         (res) => {
+          // Decode the body as one stream. Turning each read into text on its
+          // own breaks a letter such as "ø" whose bytes span two reads.
+          res.setEncoding("utf8");
           let data = "";
           res.on("data", (chunk) => {
             data += chunk;
@@ -2091,6 +2184,7 @@ class WhisperServerManager {
 
     this.process = null;
     this.ready = false;
+    this.restartPendingForSettings = false;
     this.port = null;
     this.requestPathPrefix = null;
     this.modelPath = null;

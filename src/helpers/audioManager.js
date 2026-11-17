@@ -548,6 +548,14 @@ class AudioManager {
     this._pooledStreamStale = false;
   }
 
+  /** Correction Memory is a beta: true only while the user has it turned on. */
+  isCorrectionMemoryOn() {
+    return (
+      typeof this._checkBetaFeatureAccess === "function" &&
+      Boolean(this._checkBetaFeatureAccess("correction-memory"))
+    );
+  }
+
   getCustomDictionaryPrompt() {
     try {
       const raw = localStorage.getItem("customDictionary");
@@ -559,7 +567,13 @@ class AudioManager {
       // Also include high-confidence correction targets as prompt hints
       // so whisper is more likely to recognize them
       // (correction memory is async/IPC, so we use a cached version if available)
-      if (this._cachedCorrectionHints && this._cachedCorrectionHints.length > 0) {
+      // Checked here, at every use: the cache is emptied only by a local
+      // dictation, and a cloud provider gets this prompt too.
+      if (
+        this.isCorrectionMemoryOn() &&
+        this._cachedCorrectionHints &&
+        this._cachedCorrectionHints.length > 0
+      ) {
         words.push(...this._cachedCorrectionHints);
       }
       return buildDictionaryPrompt(words);
@@ -1569,8 +1583,11 @@ class AudioManager {
   }
 
   async waitForLongSessionQueue() {
-    while (this.longSession?.processingPromise) {
-      await this.longSession.processingPromise;
+    // Only this session's queue. Once a new recording has replaced the session,
+    // its queue is not ours to wait on, and the old one never clears its promise.
+    const state = this.longSession;
+    while (this.longSession === state && state?.processingPromise) {
+      await state.processingPromise;
     }
   }
 
@@ -1677,10 +1694,20 @@ class AudioManager {
   }
 
   async finalizeLongSessionResult(durationSeconds, cleanupMetadata = {}) {
-    await this.waitForLongSessionQueue();
-    await this.retryFailedLongSessionChunks();
-
+    // The session this job was started for. After a cancel, the next recording
+    // puts a new session in its place while this job may still be waiting, and
+    // from then on this job must not read, retry or clean up the new one.
     const state = this.longSession;
+    const stopIfSessionReplaced = () => {
+      if (this.longSession !== state) {
+        throw Object.assign(new Error("Long session was replaced"), { name: "AbortError" });
+      }
+    };
+
+    await this.waitForLongSessionQueue();
+    stopIfSessionReplaced();
+    await this.retryFailedLongSessionChunks();
+    stopIfSessionReplaced();
 
     const transcribedText = [...state.results.entries()]
       .sort(([left], [right]) => left - right)
@@ -1818,6 +1845,9 @@ class AudioManager {
       return false;
     }
 
+    // A cancel that arrived after this finalization was scheduled still wins.
+    const shouldDiscard = discard || this.discardCurrentRecording;
+
     const durationSeconds = this.getRecordingDurationSeconds();
     const wasLongSession = this.longSession.active;
     const audioBlob = wasLongSession
@@ -1841,7 +1871,7 @@ class AudioManager {
     }
     this.releaseMediaRecorder();
 
-    if (discard) {
+    if (shouldDiscard) {
       this.cancelLongSessionWork();
       this.resetLongSessionState();
       this.isProcessing = false;
@@ -2256,6 +2286,10 @@ class AudioManager {
     if (this.isStoppingRecording) {
       this.discardCurrentRecording = true;
       this.emitStateChange();
+      // The stop press left a watchdog that would transcribe the dictation if
+      // the recorder never reports its stop. Replace it with the cancel one, so
+      // a hung stop ends discarded and soon, not pasted 30 seconds later.
+      this.scheduleRecorderStopWatchdog({ discard: true, timeoutMs: 350 });
       return true;
     }
 
@@ -2303,6 +2337,9 @@ class AudioManager {
       this.processingGeneration += 1;
       this.abortActiveTranscriptionRequest();
       this.cancelLongSessionWork();
+      // The cancelled dictation may already be in AI cleanup. Stop that too,
+      // or the next dictation finds the cleanup service busy and is pasted raw.
+      ReasoningService.cancelActiveRequest?.();
       this.isProcessing = false;
       this.emitStateChange();
       return true;
@@ -2489,9 +2526,13 @@ class AudioManager {
   async processLongSessionAudio({ durationSeconds, smartContextCapture = null } = {}) {
     const pipelineStart = performance.now();
     const processingGeneration = ++this.processingGeneration;
+    const session = this.longSession;
 
     try {
       await this.stopLongSessionSegmentCapture();
+      if (this.longSession !== session) {
+        return;
+      }
       const result = await this.finalizeLongSessionResult(durationSeconds, {
         processingGeneration,
         smartContextCapture,
@@ -2574,7 +2615,12 @@ class AudioManager {
       }
     } finally {
       this.clearActiveTranscriptionAbortController(processingGeneration);
-      this.resetLongSessionState();
+      // Only this job's own session. A job cancelled during processing can end
+      // after the next recording has started, and resetting then threw away
+      // that recording's segment and every minute it had transcribed.
+      if (this.longSession === session) {
+        this.resetLongSessionState();
+      }
 
       if (this.processingGeneration === processingGeneration && this.isProcessing) {
         this.isProcessing = false;
@@ -2630,9 +2676,7 @@ class AudioManager {
     try {
       // Correction Memory is a beta. Only read or inject its hints when beta
       // features are on.
-      const correctionMemoryEnabled =
-        typeof this._checkBetaFeatureAccess === "function" &&
-        this._checkBetaFeatureAccess("correction-memory");
+      const correctionMemoryEnabled = this.isCorrectionMemoryOn();
       const correctionHintsPromise = correctionMemoryEnabled
         ? this.refreshCorrectionHints()
         : Promise.resolve().then(() => {

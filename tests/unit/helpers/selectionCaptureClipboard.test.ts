@@ -234,4 +234,57 @@ describe("Read Aloud selection capture clipboard preservation", () => {
     expect(clipboard.writeText).not.toHaveBeenCalled();
     expect(clipboard.write).not.toHaveBeenCalled();
   });
+  // A second press of the shortcut can land while the first capture still
+  // runs: the worker waits up to two seconds for the trigger keys to be let go
+  // before it copies. The second capture then took the first one's sentinel
+  // for the user's clipboard and put that back last.
+  test("keeps the original clipboard when a second capture starts before the first ends", async () => {
+    const original = { text: "Original text", html: "<b>Original text</b>", image: screenshot };
+    const { capture, clipboard, contents } = createCapture(original);
+    const queuedCopies: Array<() => void> = [];
+    capture.sendCopyKeystroke = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          queuedCopies.push(() => {
+            clipboard.writeText("Selected text to read aloud.");
+            resolve("OK waited=120ms");
+          });
+        })
+    );
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    const first = capture.captureSelection();
+    const second = capture.captureSelection();
+    await settle();
+    // The worker runs its copies one at a time.
+    while (queuedCopies.length > 0) {
+      queuedCopies.shift()!();
+      await settle();
+    }
+
+    const selection = { text: "Selected text to read aloud.", source: "selection" };
+    expect(await first).toMatchObject(selection);
+    expect(await second).toMatchObject(selection);
+    expect(contents()).toEqual(original);
+
+    // Only overlapping presses share a result: a later press copies afresh.
+    const third = capture.captureSelection();
+    await settle();
+    queuedCopies.shift()!();
+    expect(await third).toMatchObject(selection);
+    expect(capture.sendCopyKeystroke).toHaveBeenCalledTimes(2);
+    expect(contents()).toEqual(original);
+  });
+
+  test("captures again after a capture that failed", async () => {
+    const original = { text: "Original" };
+    const { capture, clipboard, contents } = createCapture(original);
+    clipboard.readHTML.mockImplementationOnce(() => {
+      throw new Error("Clipboard unavailable");
+    });
+    await expect(capture.captureSelection()).rejects.toThrow("Clipboard unavailable");
+
+    expect(await capture.captureSelection()).toMatchObject({ source: "selection" });
+    expect(contents()).toEqual(original);
+  });
 });
