@@ -71,7 +71,8 @@
     "!**/node_modules/**/*.ts",
     "!**/node_modules/**/*.map",
     "!**/node_modules/**/CHANGELOG*",
-    "!**/node_modules/**/.github/**"
+    "!**/node_modules/**/.github/**",
+    "!**/node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node"
   ],
   "asarUnpack": [
     "**/node_modules/ffmpeg-static/**/*",
@@ -161,7 +162,6 @@
     },
     "icon": "src/assets/icon.ico",
     "executableName": "PrivateTranscribe",
-    "files": ["!**/node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node"],
     "extraResources": [
       {
         "from": "resources/bin/",
