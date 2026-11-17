@@ -255,6 +255,7 @@ async function initializeManagers() {
 
   windowManager = new WindowManager();
   hotkeyManager = windowManager.hotkeyManager;
+  hotkeyManager.setEnvironmentManager(environmentManager);
   databaseManager = new DatabaseManager();
   actionEngineManager = new ActionEngineManager(databaseManager);
   clipboardManager = new ClipboardManager();
