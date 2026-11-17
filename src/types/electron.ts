@@ -554,6 +554,12 @@ export interface VoiceCallApp {
   pushToMute: boolean;
 }
 
+/** An API key save. `success` is false when the key could not be written to disk. */
+export interface ApiKeySaveResult {
+  success: boolean;
+  error?: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -643,10 +649,10 @@ declare global {
       // API key management
       submitFeedback?: (payload: FeedbackSubmitPayload) => Promise<FeedbackSubmitResult>;
       getOpenAIKey: () => Promise<string>;
-      saveOpenAIKey: (key: string) => Promise<{ success: boolean }>;
-      createProductionEnvFile: (key: string) => Promise<void>;
+      saveOpenAIKey: (key: string) => Promise<ApiKeySaveResult>;
+      createProductionEnvFile: (key: string) => Promise<ApiKeySaveResult & { path: string }>;
       getAnthropicKey: () => Promise<string | null>;
-      saveAnthropicKey: (key: string) => Promise<void>;
+      saveAnthropicKey: (key: string) => Promise<ApiKeySaveResult>;
       saveAllKeysToEnv: () => Promise<{ success: boolean; path: string }>;
       syncStartupPreferences: (prefs: {
         useLocalWhisper: boolean;
@@ -1098,17 +1104,17 @@ declare global {
 
       // Gemini API key management
       getGeminiKey: () => Promise<string | null>;
-      saveGeminiKey: (key: string) => Promise<void>;
+      saveGeminiKey: (key: string) => Promise<ApiKeySaveResult>;
 
       // Groq API key management
       getGroqKey: () => Promise<string | null>;
-      saveGroqKey: (key: string) => Promise<void>;
+      saveGroqKey: (key: string) => Promise<ApiKeySaveResult>;
 
       // Custom endpoint API keys
       getCustomTranscriptionKey?: () => Promise<string | null>;
-      saveCustomTranscriptionKey?: (key: string) => Promise<void>;
+      saveCustomTranscriptionKey?: (key: string) => Promise<ApiKeySaveResult>;
       getCustomReasoningKey?: () => Promise<string | null>;
-      saveCustomReasoningKey?: (key: string) => Promise<void>;
+      saveCustomReasoningKey?: (key: string) => Promise<ApiKeySaveResult>;
 
       // Dictation key persistence (file-based for reliable startup)
       getDictationKey?: () => Promise<string | null>;

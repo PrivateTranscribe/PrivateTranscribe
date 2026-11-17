@@ -153,16 +153,18 @@ class EnvironmentManager {
     if (shouldReEncrypt) await this._persistEncryptedStore();
   }
 
+  /** Whether any saved key has a value. A cleared key leaves an empty entry. */
+  _hasSavedKey() {
+    return [...this._secrets.values()].some(Boolean);
+  }
+
   /**
-   * A store this start could not read is never written over. With no key to
-   * save it is left as it is, so the next start can try it again. Once a key
-   * is saved, the old file is moved aside first, so its keys can still be
+   * A store this start could not read is never written over. Once a key is
+   * saved, the old file is moved aside first, so its keys can still be
    * recovered.
    */
   _keepUnreadableEncryptedStore() {
     if (!this._encryptedStoreUnreadable) return true;
-    // A cleared key leaves an empty entry, which is no key to save.
-    if (![...this._secrets.values()].some(Boolean)) return false;
     try {
       fs.renameSync(
         this._encryptedStorePath,
@@ -185,7 +187,8 @@ class EnvironmentManager {
    *
    * Writes queue up, and each encrypts the keys as they are when its turn
    * comes, so two saves close together never leave the older set on disk.
-   * Resolves true once this write is on disk.
+   * Resolves true once this write is on disk, or when there was nothing it
+   * had to write.
    */
   _persistEncryptedStore() {
     const write = this._storeWrites.then(() => this._writeEncryptedStore());
@@ -196,6 +199,9 @@ class EnvironmentManager {
 
   async _writeEncryptedStore() {
     if (!this._encryptionAvailable) return false;
+    // With no key to save, an unreadable store is left as it is, so the next
+    // start can try it again. Nothing is lost, so this counts as saved.
+    if (this._encryptedStoreUnreadable && !this._hasSavedKey()) return true;
     if (!this._keepUnreadableEncryptedStore()) return false;
     const secrets = {};
     for (const [key, value] of this._secrets) {
@@ -291,8 +297,10 @@ class EnvironmentManager {
     try {
       fs.writeFileSync(this._plainEnvPath, `${lines.join("\n")}\n`, "utf8");
       this._restrictEnvFilePermissions(this._plainEnvPath);
+      return true;
     } catch (err) {
       console.error("Failed to persist plain env file:", err.message);
+      return false;
     }
   }
 
@@ -337,17 +345,23 @@ class EnvironmentManager {
     return process.env[envVarName] || "";
   }
 
+  /**
+   * Resolves `{ success: false }` when a secret key could not be written to
+   * disk. The key still works in memory, but is gone after the app closes, so
+   * the settings screen says so.
+   */
   async _saveKey(envVarName, key) {
     await this.ready;
-    if (SECRET_ENV_KEYS.has(envVarName)) {
-      this._secrets.set(envVarName, key);
-      await this._persistEncryptedStore();
-      // Also update the plain file so non-encryption fallback stays current.
-      if (!this._encryptionAvailable) this._persistPlainEnvFile();
-    } else {
+    if (!SECRET_ENV_KEYS.has(envVarName)) {
       process.env[envVarName] = key;
+      return { success: true };
     }
-    return { success: true };
+    this._secrets.set(envVarName, key);
+    // Without encryption the plain file is the store.
+    const saved = this._encryptionAvailable
+      ? await this._persistEncryptedStore()
+      : this._persistPlainEnvFile();
+    return saved ? { success: true } : { success: false, error: "key-not-written" };
   }
 
   /**
@@ -433,9 +447,9 @@ class EnvironmentManager {
    * stores the first OpenAI key.
    */
   async createProductionEnvFile(apiKey) {
-    await this._saveKey("OPENAI_API_KEY", apiKey);
+    const result = await this._saveKey("OPENAI_API_KEY", apiKey);
     this._persistPlainEnvFile();
-    return { success: true, path: this._plainEnvPath };
+    return { ...result, path: this._plainEnvPath };
   }
 }
 
