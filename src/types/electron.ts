@@ -1342,6 +1342,8 @@ declare global {
             downloadedBytes?: number;
             bytesDownloaded?: number;
             totalBytes?: number;
+            /** Set on the last event of a failed download (phase "failed"). */
+            error?: string | null;
           }
         ) => void
       ) => () => void;
