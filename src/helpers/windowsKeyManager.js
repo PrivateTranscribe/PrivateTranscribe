@@ -111,7 +111,7 @@ class WindowsKeyManager extends EventEmitter {
       this.process = child;
     } catch (error) {
       debugLogger.error("[WindowsKeyManager] Failed to spawn process", { error: error.message });
-      this.reportError(error);
+      this.reportError(Object.assign(error, { reason: "failed_to_start" }));
       return;
     }
 
@@ -162,7 +162,9 @@ class WindowsKeyManager extends EventEmitter {
       if (this.process !== listenerProcess) {
         return;
       }
-      this.reportError(error);
+      // Windows could not run the program at all, for example because an
+      // antivirus removed it. Nothing was restarted.
+      this.reportError(Object.assign(error, { reason: "failed_to_start" }));
       this.process = null;
     });
 
@@ -203,9 +205,6 @@ class WindowsKeyManager extends EventEmitter {
     });
   }
 
-  /**
-   * Stop the key listener
-   */
   _scheduleRestart(key, code, signal) {
     this.restartCount += 1;
     debugLogger.warn("[WindowsKeyManager] Listener crashed; starting it again", {
@@ -243,6 +242,9 @@ class WindowsKeyManager extends EventEmitter {
     }
   }
 
+  /**
+   * Stop the key listener
+   */
   stop() {
     this._clearRestartTimers();
     const wasListening = Boolean(this.process || this.isReady || this.currentKey);

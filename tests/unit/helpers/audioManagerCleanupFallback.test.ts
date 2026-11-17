@@ -123,6 +123,16 @@ describe("dictation when AI cleanup fails", () => {
       });
     });
 
+    it("stays quiet about a missing key for a dictation that was cancelled", async () => {
+      const { manager, onNotice } = setup();
+      vi.mocked(ReasoningService.isAvailable).mockResolvedValue(false);
+      manager.processingGeneration = 2;
+
+      await manager.processTranscription("Raw words.", "test", { processingGeneration: 1 });
+
+      expect(onNotice).not.toHaveBeenCalled();
+    });
+
     it("stays quiet when AI cleanup is switched off", async () => {
       const { manager, onNotice } = setup();
       localStorageMock.setItem("useReasoningModel", "false");

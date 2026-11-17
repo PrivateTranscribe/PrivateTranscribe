@@ -847,10 +847,11 @@ async function startApp() {
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
         // Sent once the listener's own restarts are used up, or at once for a
-        // hotkey it cannot watch. The overlay tells the user.
+        // hotkey it cannot watch, or a listener Windows would not run. The
+        // overlay tells the user.
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
           reason: "error",
-          kind: error.reason === "bad_hotkey" ? "bad_hotkey" : "crashed",
+          kind: error.reason || "crashed",
           message: error.message,
         });
       }

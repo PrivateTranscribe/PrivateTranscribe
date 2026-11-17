@@ -17,6 +17,12 @@ export function getHotkeyListenerNotice(
       description: "PrivateTranscribe cannot watch this hotkey. Choose another one in Settings.",
     };
   }
+  if (data.kind === "failed_to_start") {
+    return {
+      title: "Hotkey listener could not start",
+      description: "Windows did not run it. Restart PrivateTranscribe to try again.",
+    };
+  }
   return {
     title: "Hotkey listener stopped",
     description:

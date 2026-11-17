@@ -28,7 +28,14 @@ export function classifyCleanupFailure(error: unknown): CleanupFailureKind | nul
   const message = String(err?.message ?? error ?? "");
   const status = typeof err?.status === "number" ? err.status : null;
 
-  if (err?.name === "AbortError" || /cleanup cancelled/i.test(message)) return null;
+  // A cancel is the user's own choice, and "Already processing" is two
+  // dictations overlapping inside the app; neither is the provider's fault.
+  if (
+    err?.name === "AbortError" ||
+    /cleanup cancelled|already processing a request/i.test(message)
+  ) {
+    return null;
+  }
   if (/api key not configured/i.test(message)) return "not_set_up";
   if (
     status === 401 ||

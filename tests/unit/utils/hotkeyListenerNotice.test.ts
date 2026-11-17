@@ -16,6 +16,12 @@ describe("getHotkeyListenerNotice", () => {
     );
   });
 
+  it("does not claim restarts for a listener that never started", () => {
+    const notice = getHotkeyListenerNotice({ reason: "error", kind: "failed_to_start" });
+    expect(notice?.title).toBe("Hotkey listener could not start");
+    expect(notice?.description).not.toMatch(/restarted twice/);
+  });
+
   it("stays quiet for a developer build without the listener binary", () => {
     expect(getHotkeyListenerNotice({ reason: "binary_not_found" })).toBeNull();
     expect(getHotkeyListenerNotice(null)).toBeNull();

@@ -3556,7 +3556,7 @@ class AudioManager {
     }
 
     const useReasoning = await this.isReasoningAvailable();
-    if (!useReasoning && this.cleanupSkippedForProvider) {
+    if (!useReasoning && this.cleanupSkippedForProvider && !this.isDictationCancelled(metadata)) {
       this.noticeCleanupSkipped("not_set_up", reasoningModel, reasoningProvider);
     }
 

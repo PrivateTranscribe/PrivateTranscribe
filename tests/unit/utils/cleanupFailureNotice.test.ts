@@ -21,6 +21,7 @@ describe("classifyCleanupFailure", () => {
 
   it("files a cancelled cleanup as nothing to tell", () => {
     expect(classifyCleanupFailure(new Error("AI cleanup cancelled"))).toBeNull();
+    expect(classifyCleanupFailure(new Error("Already processing a request"))).toBeNull();
     expect(
       classifyCleanupFailure(Object.assign(new Error("x"), { name: "AbortError" }))
     ).toBeNull();
