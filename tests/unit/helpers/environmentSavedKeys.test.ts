@@ -46,7 +46,9 @@ fs.writeFileSync(process.env.STUB_LOG, JSON.stringify(seen));
 `;
 
 const onlySecretKeys = (env: Record<string, string | undefined>) =>
-  Object.fromEntries(Object.entries(env).filter(([key]) => SECRET_KEYS.includes(key.toUpperCase())));
+  Object.fromEntries(
+    Object.entries(env).filter(([key]) => SECRET_KEYS.includes(key.toUpperCase()))
+  );
 
 describe("Saved API keys stay inside the app", () => {
   let dir: string;
@@ -61,10 +63,13 @@ describe("Saved API keys stay inside the app", () => {
   const runtime = () => ({
     app: { getPath: () => userData },
     safeStorage: {
-      isEncryptionAvailable: () => true,
+      isAsyncEncryptionAvailable: async () => true,
       // Reversible stand-in for the OS keychain.
-      encryptString: (plain: string) => Buffer.from(`enc:${plain}`, "utf8"),
-      decryptString: (buf: Buffer) => buf.toString("utf8").slice(4),
+      encryptStringAsync: async (plain: string) => Buffer.from(`enc:${plain}`, "utf8"),
+      decryptStringAsync: async (buf: Buffer) => ({
+        shouldReEncrypt: false,
+        result: buf.toString("utf8").slice(4),
+      }),
     },
   });
 
@@ -99,36 +104,38 @@ describe("Saved API keys stay inside the app", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("gives the app its saved keys, ahead of the user's own", () => {
+  it("gives the app its saved keys, ahead of the user's own", async () => {
     const manager = new EnvironmentManager(runtime());
 
-    expect([
-      manager.getOpenAIKey(),
-      manager.getAnthropicKey(),
-      manager.getGeminiKey(),
-      manager.getGroqKey(),
-      manager.getCustomTranscriptionKey(),
-      manager.getCustomReasoningKey(),
-    ]).toEqual(SECRET_KEYS.map(savedValue));
+    expect(
+      await Promise.all([
+        manager.getOpenAIKey(),
+        manager.getAnthropicKey(),
+        manager.getGeminiKey(),
+        manager.getGroqKey(),
+        manager.getCustomTranscriptionKey(),
+        manager.getCustomReasoningKey(),
+      ])
+    ).toEqual(SECRET_KEYS.map(savedValue));
   });
 
-  it("leaves process.env with the user's own key only, also after a save", () => {
+  it("leaves process.env with the user's own key only, also after a save", async () => {
     const manager = new EnvironmentManager(runtime());
-    manager.saveGeminiKey("test-only-saved-later");
+    await manager.saveGeminiKey("test-only-saved-later");
 
     expect(onlySecretKeys(process.env)).toEqual({ OPENAI_API_KEY: USERS_OWN });
-    expect(manager.getGeminiKey()).toBe("test-only-saved-later");
+    expect(await manager.getGeminiKey()).toBe("test-only-saved-later");
   });
 
-  it("falls back to the user's own key when the app has none saved", () => {
+  it("falls back to the user's own key when the app has none saved", async () => {
     writeStore(SECRET_KEYS.filter((key) => key !== "OPENAI_API_KEY"));
 
-    expect(new EnvironmentManager(runtime()).getOpenAIKey()).toBe(USERS_OWN);
+    expect(await new EnvironmentManager(runtime()).getOpenAIKey()).toBe(USERS_OWN);
   });
 
-  it("never copies the user's own key into keys.enc", () => {
+  it("never copies the user's own key into keys.enc", async () => {
     writeStore(SECRET_KEYS.filter((key) => key !== "OPENAI_API_KEY"));
-    new EnvironmentManager(runtime()).saveGroqKey("test-only-saved-later");
+    await new EnvironmentManager(runtime()).saveGroqKey("test-only-saved-later");
 
     const store = fs.readFileSync(storePath(), "utf8");
     expect(store).toContain("test-only-saved-later");
@@ -138,7 +145,7 @@ describe("Saved API keys stay inside the app", () => {
   it("starts Converse's CLI with the user's own key and none the app saved", async () => {
     const manager = new EnvironmentManager(runtime());
     // A key saved while the app runs stays inside it too.
-    manager.saveGroqKey("test-only-saved-later");
+    await manager.saveGroqKey("test-only-saved-later");
 
     const stub = path.join(dir, "claude-stub.cjs");
     const log = path.join(dir, "seen.json");
@@ -163,7 +170,7 @@ describe("Saved API keys stay inside the app", () => {
   });
 
   it("starts Agent Mode's CLI with the user's own key and none the app saved", async () => {
-    new EnvironmentManager(runtime());
+    await new EnvironmentManager(runtime()).ready;
     let childEnv: Record<string, string | undefined> = {};
     const spawn = vi.fn((_bin: string, _args: string[], opts: { env: typeof childEnv }) => {
       childEnv = opts.env;
