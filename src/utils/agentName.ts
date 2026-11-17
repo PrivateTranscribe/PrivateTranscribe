@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import { DEFAULT_AGENT_NAME } from "../config/prompts";
 
 const AGENT_NAME_KEY = "agentName";
-const DEFAULT_AGENT_NAME = "PrivateTranscribe";
 
 /**
  * Fired whenever the stored agent name changes.

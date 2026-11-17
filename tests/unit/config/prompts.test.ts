@@ -22,7 +22,7 @@ function getSystemPrompt(
   dictationMode?: string,
   preferredLanguage?: string | null
 ): string {
-  const name = (agentName && agentName.trim()) || "Assistant";
+  const name = (agentName && agentName.trim()) || "PrivateTranscribe";
   let prompt = BASE_PROMPT.replace(/\{\{agentName\}\}/g, name);
 
   if (Array.isArray(customDictionary) && customDictionary.length > 0) {
@@ -51,19 +51,19 @@ describe("getSystemPrompt — baseline (no dictation mode)", () => {
     expect(prompt).not.toContain("{{agentName}}");
   });
 
-  it("defaults to 'Assistant' when agentName is null", () => {
+  it("defaults to 'PrivateTranscribe' when agentName is null", () => {
     const prompt = getSystemPrompt(null);
-    expect(prompt).toContain("Assistant");
+    expect(prompt).toContain("PrivateTranscribe");
   });
 
-  it("defaults to 'Assistant' when agentName is an empty string", () => {
+  it("defaults to 'PrivateTranscribe' when agentName is an empty string", () => {
     const prompt = getSystemPrompt("");
-    expect(prompt).toContain("Assistant");
+    expect(prompt).toContain("PrivateTranscribe");
   });
 
-  it("defaults to 'Assistant' when agentName is whitespace", () => {
+  it("defaults to 'PrivateTranscribe' when agentName is whitespace", () => {
     const prompt = getSystemPrompt("   ");
-    expect(prompt).toContain("Assistant");
+    expect(prompt).toContain("PrivateTranscribe");
   });
 
   it("appends custom dictionary when provided", () => {
@@ -142,29 +142,29 @@ describe("getSystemPrompt — dictation mode", () => {
 describe("getSystemPrompt — preferred language", () => {
   it("appends OUTPUT LANGUAGE block when a specific language code is given", () => {
     const prompt = getSystemPrompt("Alice", [], undefined, "en");
-    expect(prompt).toContain('OUTPUT LANGUAGE');
+    expect(prompt).toContain("OUTPUT LANGUAGE");
     expect(prompt).toContain('"en"');
   });
 
   it("includes the BCP-47 code in the language instruction", () => {
     const prompt = getSystemPrompt("Alice", [], undefined, "fr");
     expect(prompt).toContain('"fr"');
-    expect(prompt).toContain('BCP-47 code');
+    expect(prompt).toContain("BCP-47 code");
   });
 
   it("does NOT append language block when preferredLanguage is 'auto'", () => {
     const prompt = getSystemPrompt("Alice", [], undefined, "auto");
-    expect(prompt).not.toContain('OUTPUT LANGUAGE');
+    expect(prompt).not.toContain("OUTPUT LANGUAGE");
   });
 
   it("does NOT append language block when preferredLanguage is null", () => {
     const prompt = getSystemPrompt("Alice", [], undefined, null);
-    expect(prompt).not.toContain('OUTPUT LANGUAGE');
+    expect(prompt).not.toContain("OUTPUT LANGUAGE");
   });
 
   it("does NOT append language block when preferredLanguage is undefined", () => {
     const prompt = getSystemPrompt("Alice", [], undefined, undefined);
-    expect(prompt).not.toContain('OUTPUT LANGUAGE');
+    expect(prompt).not.toContain("OUTPUT LANGUAGE");
   });
 
   it("appends language block AFTER dictation mode line", () => {
