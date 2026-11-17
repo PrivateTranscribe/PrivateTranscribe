@@ -48,6 +48,7 @@ test("a key typed one keystroke at a time saves without a notice", async ({
   expect(await page.evaluate(() => window.electronAPI.getOpenAIKey())).toBe("sk-e2e-made-up-saved");
   await page.waitForTimeout(500);
   await expect(page.getByText("Could not save the key", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("API key saved", { exact: true })).toBeVisible();
 });
 
 test("a key that cannot be written shows a notice and still works until the app closes", async ({
@@ -81,6 +82,16 @@ test("a key that cannot be written shows a notice and still works until the app 
       page.getByText("It works until you close the app.", { exact: true })
     ).toBeVisible();
     expect(await page.evaluate(() => window.electronAPI.getOpenAIKey())).toBe(UNSAVED_KEY);
+    // The card says so too, and never claims the key is saved.
+    await expect(page.getByText("API key not saved", { exact: true })).toBeVisible();
+    await expect(page.getByText("API key saved", { exact: true })).toHaveCount(0);
+
+    // Once the disk takes the write, the next keystroke saves it and the card says so.
+    fs.chmodSync(storePath, 0o666);
+    await field.press("End");
+    await field.pressSequentially("x");
+    await expect(page.getByText("API key saved", { exact: true })).toBeVisible();
+    await expect(page.getByText("API key not saved", { exact: true })).toHaveCount(0);
   } finally {
     fs.chmodSync(storePath, 0o666);
   }

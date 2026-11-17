@@ -21,6 +21,7 @@ import type {
   TranscriptionSettingsBroadcast,
 } from "../types/electron";
 import { useOptionalToast } from "../components/ui/Toast";
+import { beginApiKeySave, finishApiKeySave, type ApiKeyId } from "../utils/apiKeySaveState";
 import { markEngineChosen, migrateRetiredParakeetSetting } from "../utils/parakeetEngineMigration";
 
 // At import, so it lands before either window renders or records: every window
@@ -665,30 +666,27 @@ export function useSettings() {
 
   // A key that could not be written to disk works until the app closes, then
   // is gone. Each key field saves on every keystroke, so only the latest save
-  // of a key decides whether the notice shows.
+  // of a key decides whether the notice shows and whether the key reads as saved.
   const showToast = useOptionalToast()?.toast;
-  const keySaveRuns = useRef<Record<string, number>>({});
   const saveKeyAndReport = useCallback(
-    (name: string, save: ((key: string) => Promise<ApiKeySaveResult>) | undefined, key: string) => {
+    (id: ApiKeyId, save: ((key: string) => Promise<ApiKeySaveResult>) | undefined, key: string) => {
       if (!save) return;
-      const run = (keySaveRuns.current[name] ?? 0) + 1;
-      keySaveRuns.current[name] = run;
-      const reportUnsaved = () => {
-        if (keySaveRuns.current[name] !== run) return;
-        showToast?.({
-          title: "Could not save the key",
-          description: "It works until you close the app.",
-          variant: "destructive",
-          duration: 10000,
-        });
+      const run = beginApiKeySave(id);
+      const finish = (saved: boolean) => {
+        if (finishApiKeySave(id, run, saved) && !saved) {
+          showToast?.({
+            title: "Could not save the key",
+            description: "It works until you close the app.",
+            variant: "destructive",
+            duration: 10000,
+          });
+        }
       };
       save(key)
-        .then((result) => {
-          if (result?.success === false) reportUnsaved();
-        })
+        .then((result) => finish(result?.success !== false))
         .catch((err: unknown) => {
-          console.error(`[useSettings] ${name} IPC failed:`, err);
-          reportUnsaved();
+          console.error(`[useSettings] Saving the ${id} API key failed:`, err);
+          finish(false);
         });
     },
     [showToast]
@@ -698,7 +696,7 @@ export function useSettings() {
   const setOpenaiApiKey = useCallback(
     (key: string) => {
       setOpenaiApiKeyLocal(key);
-      saveKeyAndReport("saveOpenAIKey", window.electronAPI?.saveOpenAIKey, key);
+      saveKeyAndReport("openai", window.electronAPI?.saveOpenAIKey, key);
       broadcastTranscriptionSettingsUpdate({ openaiApiKey: key });
       debouncedPersistToEnv();
     },
@@ -713,7 +711,7 @@ export function useSettings() {
   const setAnthropicApiKey = useCallback(
     (key: string) => {
       setAnthropicApiKeyLocal(key);
-      saveKeyAndReport("saveAnthropicKey", window.electronAPI?.saveAnthropicKey, key);
+      saveKeyAndReport("anthropic", window.electronAPI?.saveAnthropicKey, key);
       debouncedPersistToEnv();
     },
     [setAnthropicApiKeyLocal, saveKeyAndReport, debouncedPersistToEnv]
@@ -722,7 +720,7 @@ export function useSettings() {
   const setGeminiApiKey = useCallback(
     (key: string) => {
       setGeminiApiKeyLocal(key);
-      saveKeyAndReport("saveGeminiKey", window.electronAPI?.saveGeminiKey, key);
+      saveKeyAndReport("gemini", window.electronAPI?.saveGeminiKey, key);
       debouncedPersistToEnv();
     },
     [setGeminiApiKeyLocal, saveKeyAndReport, debouncedPersistToEnv]
@@ -731,7 +729,7 @@ export function useSettings() {
   const setGroqApiKey = useCallback(
     (key: string) => {
       setGroqApiKeyLocal(key);
-      saveKeyAndReport("saveGroqKey", window.electronAPI?.saveGroqKey, key);
+      saveKeyAndReport("groq", window.electronAPI?.saveGroqKey, key);
       broadcastTranscriptionSettingsUpdate({ groqApiKey: key });
       debouncedPersistToEnv();
     },
@@ -746,11 +744,7 @@ export function useSettings() {
   const setCustomTranscriptionApiKey = useCallback(
     (key: string) => {
       setCustomTranscriptionApiKeyLocal(key);
-      saveKeyAndReport(
-        "saveCustomTranscriptionKey",
-        window.electronAPI?.saveCustomTranscriptionKey,
-        key
-      );
+      saveKeyAndReport("customTranscription", window.electronAPI?.saveCustomTranscriptionKey, key);
       broadcastTranscriptionSettingsUpdate({ customTranscriptionApiKey: key });
       debouncedPersistToEnv();
     },
@@ -765,7 +759,7 @@ export function useSettings() {
   const setCustomReasoningApiKey = useCallback(
     (key: string) => {
       setCustomReasoningApiKeyLocal(key);
-      saveKeyAndReport("saveCustomReasoningKey", window.electronAPI?.saveCustomReasoningKey, key);
+      saveKeyAndReport("customReasoning", window.electronAPI?.saveCustomReasoningKey, key);
       debouncedPersistToEnv();
     },
     [setCustomReasoningApiKeyLocal, saveKeyAndReport, debouncedPersistToEnv]
