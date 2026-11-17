@@ -450,7 +450,13 @@ class DatabaseManager {
     }
   }
 
-  confirmCorrection(source, target) {
+  /**
+   * @param {{ replace?: boolean }} [options] replace: drop every other target
+   *   stored for this source first. The Correction Memory page's "Update
+   *   correction" promises to overwrite; without this the old row stayed, and
+   *   with a higher count it kept winning.
+   */
+  confirmCorrection(source, target, options = {}) {
     try {
       if (!this.db) {
         throw new Error("Database not initialized");
@@ -461,23 +467,41 @@ class DatabaseManager {
         return { success: false, reason: "invalid" };
       }
 
-      // Insert with count=2 and confirmed=1 so the correction applies immediately
-      // (snapTranscript requires count>=2 OR confirmed=1).
-      // On conflict: bump count if already >=2, otherwise lift to 2; always mark confirmed.
-      const stmt = this.db.prepare(`
+      if (options?.replace === true) {
+        const replaceTarget = this.db.transaction(() => {
+          this.db
+            .prepare("DELETE FROM correction_memory WHERE source = ? AND target != ?")
+            .run(src, tgt);
+          this._confirmCorrectionRow(src, tgt);
+        });
+        replaceTarget();
+        return { success: true };
+      }
+
+      this._confirmCorrectionRow(src, tgt);
+      return { success: true };
+    } catch (error) {
+      console.error("Error confirming correction:", error.message);
+      throw error;
+    }
+  }
+
+  _confirmCorrectionRow(src, tgt) {
+    // Insert with count=2 and confirmed=1 so the correction applies immediately
+    // (snapTranscript requires count>=2 OR confirmed=1).
+    // On conflict: bump count if already >=2, otherwise lift to 2; always mark confirmed.
+    this.db
+      .prepare(
+        `
         INSERT INTO correction_memory (source, target, count, confirmed, last_seen_at)
         VALUES (?, ?, 2, 1, CURRENT_TIMESTAMP)
         ON CONFLICT(source, target)
         DO UPDATE SET count = CASE WHEN count < 2 THEN 2 ELSE count + 1 END,
                       confirmed = 1,
                       last_seen_at = CURRENT_TIMESTAMP
-      `);
-      stmt.run(src, tgt);
-      return { success: true };
-    } catch (error) {
-      console.error("Error confirming correction:", error.message);
-      throw error;
-    }
+      `
+      )
+      .run(src, tgt);
   }
 
   getStats() {

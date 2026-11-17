@@ -612,7 +612,12 @@ declare global {
       getDictionary: () => Promise<string[]>;
       setDictionary: (words: string[]) => Promise<{ success: boolean }>;
       getCorrectionMemory: (limit?: number) => Promise<any[]>;
-      confirmCorrection: (source: string, target: string) => Promise<{ success: boolean }>;
+      /** replace: drop every other target stored for this source first. */
+      confirmCorrection: (
+        source: string,
+        target: string,
+        options?: { replace?: boolean }
+      ) => Promise<{ success: boolean }>;
       deleteCorrection: (source: string) => Promise<{ success: boolean }>;
 
       // Stats operations

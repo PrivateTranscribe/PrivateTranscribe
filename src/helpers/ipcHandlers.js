@@ -804,9 +804,11 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("db-confirm-correction", async (event, source, target) => {
+    ipcMain.handle("db-confirm-correction", async (event, source, target, options) => {
       try {
-        return this.databaseManager.confirmCorrection(source, target);
+        return this.databaseManager.confirmCorrection(source, target, {
+          replace: options?.replace === true,
+        });
       } catch (err) {
         debugLogger.error("[IPC:db-confirm-correction] error:", err.message);
         return { success: false, error: err.message };
