@@ -61,13 +61,13 @@ Licence text: GNU General Public License v3.0, under "Full licence texts" at the
 
 ### Electron (with Chromium, Node.js and V8)
 
-Electron contains Chromium, Node.js, V8 and many other open-source projects. Their licences are listed in LICENSES.chromium.html, installed next to PrivateTranscribe.exe; that list covers libEGL.dll and libGLESv2.dll (ANGLE), vk_swiftshader.dll (SwiftShader), vulkan-1.dll (Vulkan Loader) and Chromium's FFmpeg in ffmpeg.dll. d3dcompiler_47.dll, dxcompiler.dll and dxil.dll are Microsoft files that come with Electron's Windows build; LICENSES.chromium.html does not name them.
+Electron contains Chromium, Node.js, V8 and many other open-source projects. Their licences are listed in LICENSES.chromium.html, installed next to PrivateTranscribe.exe; that list covers ANGLE, which Electron builds into PrivateTranscribe.exe, vk_swiftshader.dll (SwiftShader), vulkan-1.dll (Vulkan Loader), Chromium's FFmpeg in ffmpeg.dll and Crashpad's crash-reporting helper electron_wer.dll. d3dcompiler_47.dll and dxcompiler.dll are Microsoft files that come with Electron's Windows build; LICENSES.chromium.html does not name them.
 
-- Version: 43.8.4
+- Version: 45.2.1
 - Licence: `MIT`
 - Copyright (c) Electron contributors
 - Copyright (c) 2013-2020 GitHub Inc.
-- Source: <https://github.com/electron/electron/tree/v43.8.4>
+- Source: <https://github.com/electron/electron/tree/v45.2.1>
 - Files: `../PrivateTranscribe.exe`, `../*.dll`, `../*.pak`, `../locales/*.pak`, `../*.bin`, `../icudtl.dat`, `../vk_swiftshader_icd.json`, `../LICENSE.electron.txt`, `../LICENSES.chromium.html`
 
 ```text

@@ -18,14 +18,15 @@
  *      a hotkey. So the worker is spawned once and kept alive on a line
  *      protocol rather than spawned per capture.
  *
- * Text, HTML, RTF and images are saved before the sentinel overwrites them and
- * restored together afterwards, including when copying or polling fails.
+ * Text, HTML, RTF, images and copied files are saved before the sentinel
+ * overwrites them and restored together afterwards, including when copying or
+ * polling fails.
  */
 
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
-const { clipboard } = require("electron");
+const { clipboard, ClipboardItem } = require("electron");
 const debugLogger = require("./debugLogger");
 const { snapshotClipboard, restoreClipboard } = require("./clipboardSnapshot");
 
@@ -44,6 +45,7 @@ class SelectionCapture {
     this.workerReady = false;
     this.pending = [];
     this.isStopping = false;
+    this.captureInFlight = null;
   }
 
   /**
@@ -276,7 +278,22 @@ class SelectionCapture {
    *   the worker reported an error. `elapsedMs` is the whole capture's wall
    *   time, so a real press's cost shows up in the debug log.
    */
-  async captureSelection() {
+  captureSelection() {
+    // One capture at a time. A second press of the shortcut can land while the
+    // worker still waits for the trigger keys to be released. A capture started
+    // then would save the first one's sentinel as "the user's clipboard" and
+    // restore it last, so the user's own clipboard was gone. Both presses want
+    // the same selection, so the second one shares the first one's result.
+    if (this.captureInFlight) return this.captureInFlight;
+
+    const capture = this._captureSelection().finally(() => {
+      if (this.captureInFlight === capture) this.captureInFlight = null;
+    });
+    this.captureInFlight = capture;
+    return capture;
+  }
+
+  async _captureSelection() {
     if (!this.isSupported) {
       return {
         text: "",
@@ -294,7 +311,7 @@ class SelectionCapture {
     // Snapshot every supported format before the first clipboard write. If a
     // read fails, leave the original clipboard untouched rather than clearing
     // formats we could not save. Text alone still drives the spoken fallback.
-    const originalClipboard = snapshotClipboard(clipboard);
+    const originalClipboard = await snapshotClipboard(clipboard);
     const previous = originalClipboard.text;
     // Sentinel so we can tell "copy produced nothing" from "copy produced the
     // same text that was already on the clipboard".
@@ -303,13 +320,13 @@ class SelectionCapture {
     let detail = "ERR not attempted";
     let grabbed = "";
     try {
-      clipboard.writeText(sentinel);
+      await clipboard.writeText(sentinel);
 
       detail = await this.sendCopyKeystroke();
 
       // The clipboard owner updates asynchronously. Poll instead of guessing.
       for (let attempt = 0; attempt < CLIPBOARD_POLL_ATTEMPTS; attempt++) {
-        const now = clipboard.readText();
+        const now = await clipboard.readText();
         if (now && now !== sentinel) {
           grabbed = now;
           break;
@@ -319,7 +336,7 @@ class SelectionCapture {
     } finally {
       // The user's clipboard is not ours to lose, including when the copy threw.
       // An empty one is cleared, or the sentinel or the selection would stay.
-      restoreClipboard(clipboard, originalClipboard, { clearWhenEmpty: true });
+      await restoreClipboard(clipboard, ClipboardItem, originalClipboard, { clearWhenEmpty: true });
     }
 
     const waitedMs = parseWaitedMs(detail);

@@ -34,7 +34,6 @@ beforeEach(() => {
   window.localStorage = localStorageMock;
   (ReasoningService as any).openAiEndpointPreference.clear();
   (ReasoningService as any).activeRequest = null;
-  ReasoningService.clearApiKeyCache();
   window.electronAPI = {
     getOpenAIKey: vi.fn().mockResolvedValue("sk-openai"),
     getGroqKey: vi.fn().mockResolvedValue("gsk-groq"),

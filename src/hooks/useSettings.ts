@@ -15,8 +15,13 @@ import { useBetaFeaturesEnabled } from "../utils/betaFeatures";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
-import ReasoningService from "../services/ReasoningService";
-import type { LocalTranscriptionProvider, TranscriptionSettingsBroadcast } from "../types/electron";
+import type {
+  ApiKeySaveResult,
+  LocalTranscriptionProvider,
+  TranscriptionSettingsBroadcast,
+} from "../types/electron";
+import { useOptionalToast } from "../components/ui/Toast";
+import { beginApiKeySave, finishApiKeySave, type ApiKeyId } from "../utils/apiKeySaveState";
 import { markEngineChosen, migrateRetiredParakeetSetting } from "../utils/parakeetEngineMigration";
 
 // At import, so it lands before either window renders or records: every window
@@ -659,79 +664,105 @@ export function useSettings() {
     ]
   );
 
-  // Wrapped setters that sync to Electron IPC and invalidate cache
+  // A key that could not be written to disk works until the app closes, then
+  // is gone. Each key field saves on every keystroke, so only the latest save
+  // of a key decides whether the notice shows and whether the key reads as saved.
+  const showToast = useOptionalToast()?.toast;
+  const saveKeyAndReport = useCallback(
+    (id: ApiKeyId, save: ((key: string) => Promise<ApiKeySaveResult>) | undefined, key: string) => {
+      if (!save) return;
+      const run = beginApiKeySave(id);
+      const finish = (saved: boolean) => {
+        if (finishApiKeySave(id, run, saved) && !saved) {
+          showToast?.({
+            title: "Could not save the key",
+            description: "It works until you close the app.",
+            variant: "destructive",
+            duration: 10000,
+          });
+        }
+      };
+      save(key)
+        .then((result) => finish(result?.success !== false))
+        .catch((err: unknown) => {
+          console.error(`[useSettings] Saving the ${id} API key failed:`, err);
+          finish(false);
+        });
+    },
+    [showToast]
+  );
+
+  // Wrapped setters that sync to Electron IPC
   const setOpenaiApiKey = useCallback(
     (key: string) => {
       setOpenaiApiKeyLocal(key);
-      window.electronAPI?.saveOpenAIKey?.(key)?.catch((err: unknown) => {
-        console.error("[useSettings] saveOpenAIKey IPC failed:", err);
-      });
-      ReasoningService.clearApiKeyCache("openai");
+      saveKeyAndReport("openai", window.electronAPI?.saveOpenAIKey, key);
       broadcastTranscriptionSettingsUpdate({ openaiApiKey: key });
       debouncedPersistToEnv();
     },
-    [setOpenaiApiKeyLocal, debouncedPersistToEnv, broadcastTranscriptionSettingsUpdate]
+    [
+      setOpenaiApiKeyLocal,
+      saveKeyAndReport,
+      debouncedPersistToEnv,
+      broadcastTranscriptionSettingsUpdate,
+    ]
   );
 
   const setAnthropicApiKey = useCallback(
     (key: string) => {
       setAnthropicApiKeyLocal(key);
-      window.electronAPI?.saveAnthropicKey?.(key)?.catch((err: unknown) => {
-        console.error("[useSettings] saveAnthropicKey IPC failed:", err);
-      });
-      ReasoningService.clearApiKeyCache("anthropic");
+      saveKeyAndReport("anthropic", window.electronAPI?.saveAnthropicKey, key);
       debouncedPersistToEnv();
     },
-    [setAnthropicApiKeyLocal, debouncedPersistToEnv]
+    [setAnthropicApiKeyLocal, saveKeyAndReport, debouncedPersistToEnv]
   );
 
   const setGeminiApiKey = useCallback(
     (key: string) => {
       setGeminiApiKeyLocal(key);
-      window.electronAPI?.saveGeminiKey?.(key)?.catch((err: unknown) => {
-        console.error("[useSettings] saveGeminiKey IPC failed:", err);
-      });
-      ReasoningService.clearApiKeyCache("gemini");
+      saveKeyAndReport("gemini", window.electronAPI?.saveGeminiKey, key);
       debouncedPersistToEnv();
     },
-    [setGeminiApiKeyLocal, debouncedPersistToEnv]
+    [setGeminiApiKeyLocal, saveKeyAndReport, debouncedPersistToEnv]
   );
 
   const setGroqApiKey = useCallback(
     (key: string) => {
       setGroqApiKeyLocal(key);
-      window.electronAPI?.saveGroqKey?.(key)?.catch((err: unknown) => {
-        console.error("[useSettings] saveGroqKey IPC failed:", err);
-      });
-      ReasoningService.clearApiKeyCache("groq");
+      saveKeyAndReport("groq", window.electronAPI?.saveGroqKey, key);
       broadcastTranscriptionSettingsUpdate({ groqApiKey: key });
       debouncedPersistToEnv();
     },
-    [setGroqApiKeyLocal, debouncedPersistToEnv, broadcastTranscriptionSettingsUpdate]
+    [
+      setGroqApiKeyLocal,
+      saveKeyAndReport,
+      debouncedPersistToEnv,
+      broadcastTranscriptionSettingsUpdate,
+    ]
   );
 
   const setCustomTranscriptionApiKey = useCallback(
     (key: string) => {
       setCustomTranscriptionApiKeyLocal(key);
-      window.electronAPI?.saveCustomTranscriptionKey?.(key)?.catch((err: unknown) => {
-        console.error("[useSettings] saveCustomTranscriptionKey IPC failed:", err);
-      });
+      saveKeyAndReport("customTranscription", window.electronAPI?.saveCustomTranscriptionKey, key);
       broadcastTranscriptionSettingsUpdate({ customTranscriptionApiKey: key });
       debouncedPersistToEnv();
     },
-    [setCustomTranscriptionApiKeyLocal, debouncedPersistToEnv, broadcastTranscriptionSettingsUpdate]
+    [
+      setCustomTranscriptionApiKeyLocal,
+      saveKeyAndReport,
+      debouncedPersistToEnv,
+      broadcastTranscriptionSettingsUpdate,
+    ]
   );
 
   const setCustomReasoningApiKey = useCallback(
     (key: string) => {
       setCustomReasoningApiKeyLocal(key);
-      window.electronAPI?.saveCustomReasoningKey?.(key)?.catch((err: unknown) => {
-        console.error("[useSettings] saveCustomReasoningKey IPC failed:", err);
-      });
-      ReasoningService.clearApiKeyCache("custom");
+      saveKeyAndReport("customReasoning", window.electronAPI?.saveCustomReasoningKey, key);
       debouncedPersistToEnv();
     },
-    [setCustomReasoningApiKeyLocal, debouncedPersistToEnv]
+    [setCustomReasoningApiKeyLocal, saveKeyAndReport, debouncedPersistToEnv]
   );
 
   const setCloudTranscriptionBaseUrl = useCallback(

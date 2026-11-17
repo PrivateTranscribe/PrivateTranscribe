@@ -105,10 +105,14 @@ test("multilingual speaker settings and short replies", async ({
   await capture("short-replies");
   if (phase !== "before") {
     const transcript = await controlPanel.locator("textarea[readonly]").inputValue();
-    expect(transcript).toContain("Speaker 1: Kan vi starte?");
-    expect(transcript).toContain("Speaker 2: Ja.");
-    expect(transcript).toContain("Speaker 3: Ja.");
-    expect(transcript).toContain("Speaker 1: Let's begin.");
+    expect(transcript).toBe(
+      [
+        "[00:00:00] Speaker 1: Kan vi starte?",
+        "[00:00:03] Speaker 2: Ja.",
+        "[00:00:04] Speaker 3: Ja.",
+        "[00:00:05] Speaker 1: Let's begin.",
+      ].join("\n")
+    );
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler("check-diarization-model-status");
       ipcMain.handle("check-diarization-model-status", () => ({ ready: false }));
@@ -231,6 +235,30 @@ for (const sample of [
       expect(transcript).toContain("Speaker 3");
     }
     expect(transcript).not.toContain("Unknown speaker");
+    // Every line opens with the time it started, and the times never run
+    // backwards. One voice keeps its times and drops only the label.
+    const lines = transcript.split("\n");
+    for (const line of lines) {
+      expect(line).toMatch(
+        sample.count > 1
+          ? /^\[\d{2}:\d{2}:\d{2}\] Speaker \d+: \S/
+          : /^\[\d{2}:\d{2}:\d{2}\] (?!Speaker \d+:)\S/
+      );
+    }
+    const stamps = lines.map((line) => line.slice(1, 9));
+    expect([...stamps].sort()).toEqual(stamps);
+    if (sample.name === "interview") {
+      // Whisper times a sentence's last words late, and the speaker models
+      // start one turn four words early. The whole sentence stays on the line
+      // of the speaker who said it, so each of these ends a line.
+      const sentences = [
+        "How accurate is it with a strong accent?",
+        "I keep a list of terms from my field.",
+        "Is there anything you would still like it to do?",
+        "In a seminar, the transcript reads like one long paragraph.",
+      ];
+      expect(sentences.filter((s) => !lines.some((line) => line.endsWith(` ${s}`)))).toEqual([]);
+    }
     const dir = evidenceDir || info.outputDir;
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${phase}-real-${sample.name}.txt`), transcript);

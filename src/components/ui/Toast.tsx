@@ -30,6 +30,10 @@ export const useToast = () => {
   return context;
 };
 
+/** The toast context, or undefined outside a ToastProvider (a hook under test). */
+// eslint-disable-next-line react-refresh/only-export-components
+export const useOptionalToast = () => React.useContext(ToastContext);
+
 interface ToastState extends ToastProps {
   id: string;
   dedupeKey: string;

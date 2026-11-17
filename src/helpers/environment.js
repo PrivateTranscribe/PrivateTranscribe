@@ -40,36 +40,49 @@ class EnvironmentManager {
    * @param {{ app: Electron.App, safeStorage: Electron.SafeStorage }} [runtime]
    *   Electron services, injectable so this class can be unit-tested without a
    *   live Electron runtime. Production callers use the default.
+   *
+   * Construct it after the app's `ready` event: safeStorage's async encryptor
+   * starts on first use after that. The plain settings are in process.env when
+   * the constructor returns; the saved keys arrive with `ready`, which every
+   * public method waits for.
    */
   constructor(runtime = require("electron")) {
     const { app, safeStorage } = runtime;
     this._safeStorage = safeStorage;
     this._encryptedStorePath = path.join(app.getPath("userData"), "keys.enc");
     this._plainEnvPath = path.join(app.getPath("userData"), ".env");
-    this._encryptionAvailable = safeStorage.isEncryptionAvailable();
+    /** Set before `ready` resolves; nothing reads it earlier. */
+    this._encryptionAvailable = false;
     /** The keys saved in the app, by SECRET_ENV_KEYS name. */
     this._secrets = new Map();
-    this.loadEnvironmentVariables();
+    /** keys.enc writes, one at a time, each with the keys as they are then. */
+    this._storeWrites = Promise.resolve();
+    // 1. Plain settings (non-secrets + legacy fallback) load at once, because
+    //    startup reads them from process.env right after this.
+    this._loadPlainEnvFile();
+    this.ready = this._loadSecrets();
   }
 
   // ──────────────────────────────────────────────────────────────────────────
   // Boot-time loading
   // ──────────────────────────────────────────────────────────────────────────
 
-  loadEnvironmentVariables() {
-    // 1. Load plain settings from .env (non-secrets + legacy fallback).
-    this._loadPlainEnvFile();
-
-    // 2. Load secrets from encrypted store (overrides any .env fallback).
-    if (this._encryptionAvailable) {
-      this._loadEncryptedStore();
-      // 3. Sweep up secrets left in clear text by an older build or by a run
-      //    that had no keyring available.
-      this._migratePlainEnvSecrets();
-    } else {
-      // Encryption unavailable (e.g. headless Linux without a keyring).
-      // Plain .env already loaded above; nothing more to do.
+  async _loadSecrets() {
+    try {
+      this._encryptionAvailable = await this._safeStorage.isAsyncEncryptionAvailable();
+    } catch (err) {
+      console.warn("Could not check whether encryption is available:", err.message);
+      this._encryptionAvailable = false;
     }
+    // Encryption unavailable (e.g. headless Linux without a keyring): the
+    // plain file loaded above is the only store.
+    if (!this._encryptionAvailable) return;
+
+    // 2. Secrets from the encrypted store (override any plain-file fallback).
+    await this._loadEncryptedStore();
+    // 3. Sweep up secrets left in clear text by an older build or by a run
+    //    that had no keyring available.
+    await this._migratePlainEnvSecrets();
   }
 
   /**
@@ -85,7 +98,7 @@ class EnvironmentManager {
    * resourcesPath .env candidates are the developer's or the installer's files,
    * so they are left alone.
    */
-  _migratePlainEnvSecrets() {
+  async _migratePlainEnvSecrets() {
     let contents;
     try {
       if (!fs.existsSync(this._plainEnvPath)) return;
@@ -101,7 +114,7 @@ class EnvironmentManager {
 
     // Only rewrite the plain file once the secrets are safely encrypted,
     // otherwise a failed write here would discard the user's keys.
-    if (!this._persistEncryptedStore()) return;
+    if (!(await this._persistEncryptedStore())) return;
     this._persistPlainEnvFile();
   }
 
@@ -109,13 +122,17 @@ class EnvironmentManager {
    * Attempt to load the encrypted key store into the saved keys.
    * Silently ignores a missing file (first run) or a corrupt file (returns
    * early so the keys from the .env fallback stand).
+   *
+   * A store written by the old synchronous encryptString decrypts here too.
    */
-  _loadEncryptedStore() {
+  async _loadEncryptedStore() {
+    let shouldReEncrypt = false;
     try {
       if (!fs.existsSync(this._encryptedStorePath)) return;
       const cipherBuf = fs.readFileSync(this._encryptedStorePath);
-      const jsonStr = this._safeStorage.decryptString(cipherBuf);
-      const parsed = JSON.parse(jsonStr);
+      const decrypted = await this._safeStorage.decryptStringAsync(cipherBuf);
+      shouldReEncrypt = Boolean(decrypted.shouldReEncrypt);
+      const parsed = JSON.parse(decrypted.result);
       if (parsed && typeof parsed === "object") {
         for (const [key, value] of Object.entries(parsed)) {
           if (SECRET_ENV_KEYS.has(key) && typeof value === "string") {
@@ -129,19 +146,25 @@ class EnvironmentManager {
       // the settings rewrite every window sends a few seconds after launch.
       this._encryptedStoreUnreadable = true;
       console.warn("Could not read the encrypted key store:", err.message);
+      return;
     }
+    // The OS rotated its key, or offers a stronger one: write the store again
+    // so it stops depending on the old key.
+    if (shouldReEncrypt) await this._persistEncryptedStore();
+  }
+
+  /** Whether any saved key has a value. A cleared key leaves an empty entry. */
+  _hasSavedKey() {
+    return [...this._secrets.values()].some(Boolean);
   }
 
   /**
-   * A store this start could not read is never written over. With no key to
-   * save it is left as it is, so the next start can try it again. Once a key
-   * is saved, the old file is moved aside first, so its keys can still be
+   * A store this start could not read is never written over. Once a key is
+   * saved, the old file is moved aside first, so its keys can still be
    * recovered.
    */
   _keepUnreadableEncryptedStore() {
     if (!this._encryptedStoreUnreadable) return true;
-    // A cleared key leaves an empty entry, which is no key to save.
-    if (![...this._secrets.values()].some(Boolean)) return false;
     try {
       fs.renameSync(
         this._encryptedStorePath,
@@ -161,16 +184,31 @@ class EnvironmentManager {
    * Write the saved keys to the encrypted store. A key the user set in their
    * own environment is not one of them, so it is never copied in.
    * Called after every key save to keep the store in sync.
+   *
+   * Writes queue up, and each encrypts the keys as they are when its turn
+   * comes, so two saves close together never leave the older set on disk.
+   * Resolves true once this write is on disk, or when there was nothing it
+   * had to write.
    */
   _persistEncryptedStore() {
+    const write = this._storeWrites.then(() => this._writeEncryptedStore());
+    // A write that throws must not stop the ones queued behind it.
+    this._storeWrites = write.catch(() => false);
+    return write;
+  }
+
+  async _writeEncryptedStore() {
     if (!this._encryptionAvailable) return false;
+    // With no key to save, an unreadable store is left as it is, so the next
+    // start can try it again. Nothing is lost, so this counts as saved.
+    if (this._encryptedStoreUnreadable && !this._hasSavedKey()) return true;
+    if (!this._keepUnreadableEncryptedStore()) return false;
     const secrets = {};
     for (const [key, value] of this._secrets) {
       if (value) secrets[key] = value;
     }
-    if (!this._keepUnreadableEncryptedStore()) return false;
     try {
-      const cipherBuf = this._safeStorage.encryptString(JSON.stringify(secrets));
+      const cipherBuf = await this._safeStorage.encryptStringAsync(JSON.stringify(secrets));
       fs.writeFileSync(this._encryptedStorePath, cipherBuf);
       return true;
     } catch (err) {
@@ -259,8 +297,10 @@ class EnvironmentManager {
     try {
       fs.writeFileSync(this._plainEnvPath, `${lines.join("\n")}\n`, "utf8");
       this._restrictEnvFilePermissions(this._plainEnvPath);
+      return true;
     } catch (err) {
       console.error("Failed to persist plain env file:", err.message);
+      return false;
     }
   }
 
@@ -299,21 +339,29 @@ class EnvironmentManager {
   // ──────────────────────────────────────────────────────────────────────────
 
   /** A saved key, else the user's own variable of that name. */
-  _getKey(envVarName) {
+  async _getKey(envVarName) {
+    await this.ready;
     if (this._secrets.has(envVarName)) return this._secrets.get(envVarName) || "";
     return process.env[envVarName] || "";
   }
 
-  _saveKey(envVarName, key) {
-    if (SECRET_ENV_KEYS.has(envVarName)) {
-      this._secrets.set(envVarName, key);
-      this._persistEncryptedStore();
-      // Also update the plain file so non-encryption fallback stays current.
-      if (!this._encryptionAvailable) this._persistPlainEnvFile();
-    } else {
+  /**
+   * Resolves `{ success: false }` when a secret key could not be written to
+   * disk. The key still works in memory, but is gone after the app closes, so
+   * the settings screen says so.
+   */
+  async _saveKey(envVarName, key) {
+    await this.ready;
+    if (!SECRET_ENV_KEYS.has(envVarName)) {
       process.env[envVarName] = key;
+      return { success: true };
     }
-    return { success: true };
+    this._secrets.set(envVarName, key);
+    // Without encryption the plain file is the store.
+    const saved = this._encryptionAvailable
+      ? await this._persistEncryptedStore()
+      : this._persistPlainEnvFile();
+    return saved ? { success: true } : { success: false, error: "key-not-written" };
   }
 
   /**
@@ -331,7 +379,7 @@ class EnvironmentManager {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Public API — mirrors the old interface exactly so no callers change
+  // Public API — each method resolves once the saved keys have loaded
   // ──────────────────────────────────────────────────────────────────────────
 
   getOpenAIKey() {
@@ -387,8 +435,9 @@ class EnvironmentManager {
    * Persist all current keys.  Called by IPC handlers that bulk-save settings.
    * Replaces the old saveAllKeysToEnvFile().
    */
-  saveAllKeysToEnvFile() {
-    this._persistEncryptedStore();
+  async saveAllKeysToEnvFile() {
+    await this.ready;
+    await this._persistEncryptedStore();
     this._persistPlainEnvFile();
     return { success: true, path: this._plainEnvPath };
   }
@@ -397,10 +446,10 @@ class EnvironmentManager {
    * Legacy helper used during first-run onboarding.  Creates the env file and
    * stores the first OpenAI key.
    */
-  createProductionEnvFile(apiKey) {
-    this._saveKey("OPENAI_API_KEY", apiKey);
+  async createProductionEnvFile(apiKey) {
+    const result = await this._saveKey("OPENAI_API_KEY", apiKey);
     this._persistPlainEnvFile();
-    return { success: true, path: this._plainEnvPath };
+    return { ...result, path: this._plainEnvPath };
   }
 }
 

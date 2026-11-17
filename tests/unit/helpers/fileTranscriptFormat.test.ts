@@ -42,7 +42,7 @@ describe("formatFileTranscript", () => {
       "local-diarization"
     );
 
-    expect(result.text).toBe("Speaker 1: Kan vi starte?\nSpeaker 2: Ja.");
+    expect(result.text).toBe("[00:00:00] Speaker 1: Kan vi starte?\n[00:00:02] Speaker 2: Ja.");
     expect(result.format).toBe("speakers");
   });
 });
