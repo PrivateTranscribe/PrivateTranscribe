@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DONE_SHOWN_MS,
   LEAVE_MS,
+  NO_WAITING_NOTICE,
+  WAITING_SHOWN_MS,
   createLevelStore,
   fadeAt,
+  nextWaitingNotice,
   questionStage,
   useNarratorRows,
   type NarratorOverlayView,
@@ -137,6 +140,44 @@ describe("narrator overlay rows", () => {
     expect(rowsFor(view({ gaming: true, waiting: 3 })).waiting).toBe(3);
     expect(rowsFor(view({ gaming: true, waiting: 0 })).visible).toBe(false);
     expect(rowsFor(null).visible).toBe(false);
+  });
+
+  it("brings the waiting count up when a chat starts waiting, and adds no time when one is answered", () => {
+    expect(WAITING_SHOWN_MS).toBe(5000);
+    const first = nextWaitingNotice(NO_WAITING_NOTICE, 1, false);
+    expect(first).toEqual({ count: 1, pending: false, shows: 1 });
+    // Nothing changed: the same notice, so its five seconds are not started again.
+    expect(nextWaitingNotice(first, 1, false)).toBe(first);
+    // A second chat starts waiting: the count comes up again.
+    const second = nextWaitingNotice(first, 2, false);
+    expect(second).toEqual({ count: 2, pending: false, shows: 2 });
+    // One of the two is answered: the number changes, the showing does not.
+    const fewer = nextWaitingNotice(second, 1, false);
+    expect(fewer).toEqual({ count: 1, pending: false, shows: 2 });
+    // The last one is answered: nothing is left to show.
+    const none = nextWaitingNotice(fewer, 0, false);
+    expect(none).toEqual({ count: 0, pending: false, shows: 2 });
+    expect(nextWaitingNotice(none, 0, false)).toBe(none);
+    // A chat starts waiting again: a showing of its own, not the faded one.
+    expect(nextWaitingNotice(none, 1, false)).toEqual({ count: 1, pending: false, shows: 3 });
+  });
+
+  it("holds a new wait back while a question is on screen, then shows it for its whole time", () => {
+    const covered = nextWaitingNotice(NO_WAITING_NOTICE, 1, true);
+    expect(covered).toEqual({ count: 1, pending: true, shows: 0 });
+    expect(nextWaitingNotice(covered, 1, true)).toBe(covered);
+    // The question row is gone: the showing starts now, not when the chat began waiting.
+    expect(nextWaitingNotice(covered, 1, false)).toEqual({ count: 1, pending: false, shows: 1 });
+    // A question that covers a count already shown starts nothing new once it is gone.
+    const shown = nextWaitingNotice(NO_WAITING_NOTICE, 1, false);
+    expect(nextWaitingNotice(nextWaitingNotice(shown, 1, true), 1, false)).toBe(shown);
+  });
+
+  it("draws a count that is already there with the first draw, not fading", () => {
+    const rows = rowsFor(view({ waiting: 1 }));
+    expect(rows.waiting).toBe(1);
+    expect(rows.waitingLeaving).toBe(false);
+    expect(rows.visible).toBe(true);
   });
 
   it("tells the bars about a level change once, and stops after unsubscribe", () => {

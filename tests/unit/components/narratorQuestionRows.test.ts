@@ -48,9 +48,19 @@ function question(patch: Partial<NarratorVoiceQuestion> = {}): NarratorVoiceQues
 
 function render(
   q: NarratorVoiceQuestion | null,
-  { language = "en", waiting = 0 }: { language?: NarratorLanguage; waiting?: number } = {}
+  {
+    language = "en",
+    waiting = 0,
+    waitingLeaving = false,
+  }: { language?: NarratorLanguage; waiting?: number; waitingLeaving?: boolean } = {}
 ) {
-  const rows: NarratorRows = { question: q, leaving: false, waiting, visible: true };
+  const rows: NarratorRows = {
+    question: q,
+    leaving: false,
+    waiting,
+    waitingLeaving,
+    visible: true,
+  };
   return renderToStaticMarkup(
     React.createElement(NarratorQuestionRows, { rows, language, level: null })
   );
@@ -157,6 +167,12 @@ describe("narrator voice question card", () => {
     expect(text(render(null, { waiting: 1 }))).toBe("1 chat waiting");
     expect(text(render(null, { waiting: 3 }))).toBe("3 chats waiting");
     expect(text(render(null, { waiting: 2, language: "da" }))).toBe("2 chats venter");
+  });
+
+  it("fades the waiting count out once its time is up", () => {
+    const row = (html: string) => html.match(/data-testid="narrator-waiting"[^>]*>/)?.[0] ?? "";
+    expect(row(render(null, { waiting: 1 }))).toContain("opacity:1");
+    expect(row(render(null, { waiting: 1, waitingLeaving: true }))).toContain("opacity:0");
   });
 
   it("never takes a click or the keyboard", () => {

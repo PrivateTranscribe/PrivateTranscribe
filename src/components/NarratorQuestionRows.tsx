@@ -21,7 +21,7 @@ import {
  *   recording   "listening", with the answer's level as bars
  *   reading     the choice heard, lit; "Press F20 to cancel", 3 s draining
  *   done        sent, cancelled, or "it waits in the chat", then it fades
- *   waiting     a quiet "1 chat waiting" capsule until the chat is answered
+ *   waiting     a quiet "1 chat waiting" capsule for 5 s when a chat starts waiting
  *
  * Every row is click-through and never takes focus: a game keeps the mouse
  * and the keyboard. Questions only come in gaming mode, and the waiting
@@ -389,7 +389,13 @@ export default function NarratorQuestionRows({
           data-count={rows.waiting}
           role="status"
           className={`flex items-center gap-2 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
-          style={{ ...overlayRowStyle({ interactive: false, status: true }), ...entrance }}
+          style={{
+            ...overlayRowStyle({ interactive: false, status: true }),
+            ...entrance,
+            opacity: rows.waitingLeaving ? 0 : 1,
+            transform: rows.waitingLeaving && !reducedMotion ? "translateY(4px)" : undefined,
+            transition: `opacity ${LEAVE_MS}ms ease, transform ${LEAVE_MS}ms ease`,
+          }}
         >
           <span style={liveDotStyle({ live: false, pulse: false })} aria-hidden />
           <span className={`${OVERLAY_STATUS_TEXT_CLASS} whitespace-nowrap`}>

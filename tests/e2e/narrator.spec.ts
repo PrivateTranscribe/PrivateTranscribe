@@ -107,6 +107,12 @@ async function capture(page: Page, name: string) {
   await page.screenshot({ path: path.join(EVIDENCE, `after-${name}.png`), animations: "disabled" });
 }
 
+/** The overlay as it is drawn right now, for review. */
+async function captureOverlay(page: Page, name: string) {
+  fs.mkdirSync(EVIDENCE, { recursive: true });
+  await page.screenshot({ path: path.join(EVIDENCE, `after-${name}.png`) });
+}
+
 test.beforeAll(() => {
   fs.mkdirSync(path.join(ROOT, PROJECT), { recursive: true });
   fs.writeFileSync(
@@ -261,10 +267,31 @@ test("gaming mode speaks only waits, turns listening off, and counts waits only 
     window.electronAPI.narratorUpdateSettings({ answerByVoice: true })
   );
   await expect(marker).toBeVisible({ timeout: 10_000 });
+  const shownAt = Date.now();
   await expect(marker).toHaveAttribute("data-count", "1");
-  // Answered at the PC: the count goes.
+  await overlayWindow.waitForTimeout(1000);
+  await captureOverlay(overlayWindow, "pill-shown");
+
+  // It shows for five seconds and then leaves by itself, while the chat still
+  // waits: nothing stays parked over a game.
+  await overlayWindow.waitForTimeout(3000);
+  await expect(marker).toBeVisible();
+  await expect(marker).toHaveCount(0, { timeout: 5000 });
+  const shownMs = Date.now() - shownAt;
+  console.log(`[narrator] waiting count shown for ${shownMs} ms`);
+  expect(shownMs).toBeGreaterThan(4500);
+  expect(shownMs).toBeLessThan(7000);
+  expect((await narratorState(controlPanel)).waiting).toBe(1);
+  await captureOverlay(overlayWindow, "pill-gone");
+
+  // Answered at the PC, and the chat starts waiting again: the count comes back.
   writeAnswer();
-  await expect(marker).toHaveCount(0, { timeout: 10_000 });
+  await expect.poll(async () => (await narratorState(controlPanel)).waiting).toBe(0);
+  writeWait("Release it too?");
+  await expect(marker).toBeVisible({ timeout: 10_000 });
+  // Answered while the count shows: it goes at once.
+  writeAnswer();
+  await expect(marker).toHaveCount(0, { timeout: 3000 });
 });
 
 test("speaks the Danish test line after Read Aloud's splitter has run", async ({

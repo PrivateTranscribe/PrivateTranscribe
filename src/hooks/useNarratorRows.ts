@@ -30,6 +30,8 @@ export interface NarratorRows {
   leaving: boolean;
   /** The quiet count of chats waiting, or 0 for none shown. */
   waiting: number;
+  /** The waiting count is fading out. */
+  waitingLeaving: boolean;
   visible: boolean;
 }
 
@@ -107,17 +109,85 @@ function useQuestionStage(question: NarratorVoiceQuestion | null): QuestionStage
   return questionStage(question, now);
 }
 
+/** How long the waiting count shows once a chat starts waiting, before it fades. */
+export const WAITING_SHOWN_MS = 5000;
+
+/** What the waiting count remembers between draws. */
+export interface WaitingNotice {
+  /** The count last seen, so a rise is noticed. */
+  count: number;
+  /** A chat started waiting while a question covered the count: it shows once the row is free. */
+  pending: boolean;
+  /** How many times the count has come up, ever; each time gets its own WAITING_SHOWN_MS. */
+  shows: number;
+}
+
+export const NO_WAITING_NOTICE: WaitingNotice = { count: 0, pending: false, shows: 0 };
+
+/**
+ * The notice after one look at the count. A rise brings the count up anew; a
+ * fall changes the number and adds no time; `covered` (a question is on
+ * screen) holds a rise back until the question is gone. Returns `prev` itself
+ * when nothing changed.
+ */
+export function nextWaitingNotice(
+  prev: WaitingNotice,
+  count: number,
+  covered: boolean
+): WaitingNotice {
+  // The showings keep counting up: a wait after every chat was answered is a new showing.
+  if (count <= 0) {
+    return prev.count === 0 && !prev.pending
+      ? prev
+      : { count: 0, pending: false, shows: prev.shows };
+  }
+  const pending = prev.pending || count > prev.count;
+  if (pending && !covered) return { count, pending: false, shows: prev.shows + 1 };
+  if (count === prev.count && pending === prev.pending) return prev;
+  return { count, pending, shows: prev.shows };
+}
+
+function useWaitingStage(count: number, covered: boolean): QuestionStage {
+  // Taken in while drawing, the first draw included, so a count that is
+  // already there comes up with it and a count that is gone leaves at once.
+  const [notice, setNotice] = useState(() => nextWaitingNotice(NO_WAITING_NOTICE, count, covered));
+  const current = nextWaitingNotice(notice, count, covered);
+  if (current !== notice) setNotice(current);
+
+  /** How far the fade of one showing has come; a new showing starts live again. */
+  const [fade, setFade] = useState<{ shows: number; stage: QuestionStage }>({
+    shows: 0,
+    stage: "live",
+  });
+  const { shows } = current;
+  useEffect(() => {
+    if (!shows) return undefined;
+    const timers = [
+      setTimeout(() => setFade({ shows, stage: "leaving" }), WAITING_SHOWN_MS),
+      setTimeout(() => setFade({ shows, stage: "gone" }), WAITING_SHOWN_MS + LEAVE_MS),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [shows]);
+
+  if (covered || count <= 0 || !shows || current.pending) return "gone";
+  return fade.shows === shows ? fade.stage : "live";
+}
+
 export function useNarratorRows(view: NarratorOverlayView | null): NarratorRows {
   const question = view?.question ?? null;
   const stage = useQuestionStage(question);
   const shown = question !== null && stage !== "gone";
-  // While a question is on screen its row says everything; after it, a quiet
-  // count stays. Only in gaming mode: at the PC the chats show their own waits.
-  const waiting = view?.gaming && !shown ? Math.max(0, view.waiting || 0) : 0;
+  // While a question is on screen its row says everything. A chat that starts
+  // waiting shows a quiet count for a few seconds, then it fades: nothing stays
+  // parked over a game. Only in gaming mode: at the PC the chats show their own waits.
+  const count = view?.gaming ? Math.max(0, view.waiting || 0) : 0;
+  const waitingStageNow = useWaitingStage(count, shown);
+  const waiting = waitingStageNow === "gone" ? 0 : count;
   return {
     question: shown ? question : null,
     leaving: stage === "leaving",
     waiting,
+    waitingLeaving: waitingStageNow === "leaving",
     visible: shown || waiting > 0,
   };
 }
