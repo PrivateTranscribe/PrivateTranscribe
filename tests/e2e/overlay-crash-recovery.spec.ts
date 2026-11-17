@@ -5,8 +5,13 @@ import { expect, test } from "./fixtures/electron-app";
 /**
  * A crash of the dictation overlay's page process left the window standing
  * with nothing in it, so the hotkey did nothing until the app was restarted.
- * The overlay now reloads itself. This crashes the real page and then starts
- * a recording through the same IPC message the hotkey sends.
+ * The overlay now reloads itself. This sends the overlay the event Electron
+ * raises when its page process dies, then starts a recording through the same
+ * IPC message the hotkey sends.
+ *
+ * A real crash (webContents.forcefullyCrashRenderer) works in the app, but it
+ * trips an internal assert in Playwright's own page tracking most runs, so the
+ * spec fails for a reason that is not the app's.
  */
 
 const WAV = path.resolve(__dirname, "..", "fixtures", "dictation", "banana.wav");
@@ -49,7 +54,7 @@ test("the overlay reloads after its page crashes, and dictation starts again", a
     const win = BrowserWindow.getAllWindows().find(
       (w) => !w.isDestroyed() && !w.webContents.getURL().includes("panel=true")
     );
-    win!.webContents.forcefullyCrashRenderer();
+    win!.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: -1 });
   });
 
   await expect
