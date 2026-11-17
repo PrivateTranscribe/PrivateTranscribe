@@ -1,4 +1,4 @@
-const { clipboard, app } = require("electron");
+const { clipboard, ClipboardItem, app } = require("electron");
 const { spawn, spawnSync } = require("child_process");
 const { killProcess } = require("../utils/process");
 const debugLogger = require("./debugLogger");
@@ -148,13 +148,13 @@ class ClipboardManager {
   }
 
   _restoreClipboard(snapshot) {
-    restoreClipboard(clipboard, snapshot);
+    return restoreClipboard(clipboard, ClipboardItem, snapshot);
   }
 
   _restoreClipboardAfter(snapshot, delayMs) {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        this._restoreClipboard(snapshot);
+      setTimeout(async () => {
+        await this._restoreClipboard(snapshot);
         this.safeLog("🔄 Clipboard restored");
         resolve();
       }, delayMs);
@@ -176,16 +176,14 @@ class ClipboardManager {
 
     try {
       // Save original clipboard content first
-      const originalClipboard = this._snapshotClipboard();
+      const originalClipboard = await this._snapshotClipboard();
       this.safeLog(`💾 Saved original clipboard content`, {
-        textLength: (originalClipboard.text || "").length,
-        htmlLength: (originalClipboard.html || "").length,
-        rtfLength: (originalClipboard.rtf || "").length,
-        hasImage: !!originalClipboard.hasImage,
+        textLength: originalClipboard.text.length,
+        formats: Object.keys(originalClipboard.formats),
       });
 
       // Copy text to clipboard first - this always works
-      clipboard.writeText(text);
+      await clipboard.writeText(text);
       this.safeLog(`📋 Text copied to clipboard (${text.length} chars)`);
 
       if (platform === "darwin") {
@@ -786,16 +784,16 @@ class ClipboardManager {
     // This bypasses clipboard paste entirely and is more reliable for terminal emulators
     // that may have issues with Ctrl+Shift+V keystroke simulation
     if (inTerminal && xdotoolExists && !isWayland) {
+      const textToType = await clipboard.readText(); // Read what we put in clipboard
       debugLogger.debug(
         "Trying xdotool type fallback for terminal",
         {
-          textLength: clipboard.readText().length,
+          textLength: textToType.length,
           targetWindowId,
         },
         "clipboard"
       );
       this.safeLog("🔄 Trying xdotool type fallback for terminal...");
-      const textToType = clipboard.readText(); // Read what we put in clipboard
       const typeArgs = targetWindowId
         ? ["windowactivate", "--sync", targetWindowId, "type", "--clearmodifiers", "--", textToType]
         : ["type", "--clearmodifiers", "--", textToType];
@@ -1025,21 +1023,12 @@ Would you like to open System Settings now?`;
   }
 
   async readClipboard() {
-    try {
-      const text = clipboard.readText();
-      return text;
-    } catch (error) {
-      throw error;
-    }
+    return clipboard.readText();
   }
 
   async writeClipboard(text) {
-    try {
-      clipboard.writeText(text);
-      return { success: true };
-    } catch (error) {
-      throw error;
-    }
+    await clipboard.writeText(text);
+    return { success: true };
   }
 
   /**
