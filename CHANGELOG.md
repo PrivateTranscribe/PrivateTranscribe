@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A file you copied in File Explorer is still on the clipboard after a dictation is pasted, and after the Read Aloud shortcut reads your selection. Before, only the dictated text was left, or nothing at all after Read Aloud, so pasting no longer gave you the file.
+
 ## 0.26.2 - 2026-11-13
 
 ### Fixed
