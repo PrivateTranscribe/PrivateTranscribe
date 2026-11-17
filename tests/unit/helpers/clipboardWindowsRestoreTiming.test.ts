@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock("electron", () => ({
   app: {},
   clipboard: {
-    readHTML: vi.fn(() => ""),
-    readImage: vi.fn(() => ({ isEmpty: () => true })),
-    readRTF: vi.fn(() => ""),
-    readText: vi.fn(() => ""),
-    write: vi.fn(),
-    writeText: vi.fn(),
+    read: vi.fn(async () => []),
+    readText: vi.fn(async () => ""),
+    write: vi.fn(async () => {}),
+    writeText: vi.fn(async () => {}),
+    clear: vi.fn(),
   },
+  ClipboardItem: class {},
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -57,5 +57,26 @@ describe("ClipboardManager delayed clipboard restoration", () => {
 
     expect(restore).toHaveBeenCalledTimes(1);
     expect(restore).toHaveBeenCalledWith({ text: "original" });
+  });
+
+  // Since Electron 44 the clipboard write behind a restore is async, so paste
+  // must also wait for that write, not only for the timer.
+  test("does not resolve before the async restore write has finished", async () => {
+    const manager = new ClipboardManager();
+    let finishWrite: () => void = () => {};
+    vi.spyOn(manager, "_restoreClipboard").mockImplementation(
+      () => new Promise<void>((resolve) => (finishWrite = resolve))
+    );
+    let settled = false;
+
+    const pending = manager._restoreClipboardAfter({ text: "original" }, 80).then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(settled).toBe(false);
+
+    finishWrite();
+    await pending;
+    expect(settled).toBe(true);
   });
 });

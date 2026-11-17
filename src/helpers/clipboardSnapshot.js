@@ -1,50 +1,59 @@
 /**
- * Preserve the common clipboard formats Electron can write together. Clipboard
- * contents stay in memory and must never be logged. Native formats such as
- * copied files and application-specific data are outside this snapshot.
+ * Save the user's clipboard before we write to it, and put it back afterwards.
+ * Clipboard contents stay in memory and must never be logged.
+ *
+ * Electron 44 replaced the synchronous per-format readers with the W3C-style
+ * `clipboard.read()`, which lists every format the OS clipboard holds by MIME
+ * type. The snapshot keeps the standard types: text, HTML, RTF, images, and
+ * copied files, which Windows exposes as `text/uri-list`. It skips the raw
+ * platform formats (`electron application/osclipboard;format=...`), such as
+ * Excel's native cell data. Reading a format makes its owner render it, and a
+ * large raw format would delay every dictation. Pasting after a restore
+ * therefore works from the standard formats, as it did before Electron 44.
  *
  * Accept the clipboard API explicitly so paste and selection capture share the
  * same behavior without depending on each other's managers or worker processes.
  */
-function snapshotClipboard(clipboard) {
-  const text = clipboard.readText();
-  const html = clipboard.readHTML();
-  const rtf = clipboard.readRTF();
-  const image = clipboard.readImage();
+const SNAPSHOT_TYPES = ["text/plain", "text/html", "text/rtf", "image/png", "text/uri-list"];
 
-  return {
-    text,
-    html,
-    rtf,
-    hasImage: image && typeof image.isEmpty === "function" ? !image.isEmpty() : false,
-    image,
-  };
+async function snapshotClipboard(clipboard) {
+  const formats = {};
+  for (const item of await clipboard.read()) {
+    for (const type of item.types) {
+      if (!SNAPSHOT_TYPES.includes(type) || Object.hasOwn(formats, type)) continue;
+      formats[type] = await item.getType(type);
+    }
+  }
+  const text = formats["text/plain"] ? await formats["text/plain"].text() : "";
+  return { text, formats };
 }
 
 /**
- * Electron ignores `clipboard.write({})`, so restoring an empty snapshot leaves
- * whatever was written since. Pass `clearWhenEmpty` when that would leak our
- * own data, such as Read Aloud's sentinel.
+ * Restoring an empty snapshot writes nothing, so whatever was written since
+ * would stay. Pass `clearWhenEmpty` when that would leak our own data, such as
+ * Read Aloud's sentinel. Never rejects: restoration is best effort and must not
+ * mask the error of the operation it cleans up after.
  */
-function restoreClipboard(clipboard, snapshot, { clearWhenEmpty = false } = {}) {
+async function restoreClipboard(
+  clipboard,
+  ClipboardItem,
+  snapshot,
+  { clearWhenEmpty = false } = {}
+) {
   if (!snapshot) return;
 
-  // One write restores all formats together; sequential writeText/writeHTML
-  // calls would replace earlier formats.
-  const payload = {};
-  if (typeof snapshot.text === "string" && snapshot.text.length > 0) payload.text = snapshot.text;
-  if (typeof snapshot.html === "string" && snapshot.html.length > 0) payload.html = snapshot.html;
-  if (typeof snapshot.rtf === "string" && snapshot.rtf.length > 0) payload.rtf = snapshot.rtf;
-  if (snapshot.hasImage && snapshot.image) payload.image = snapshot.image;
-
   try {
-    if (Object.keys(payload).length > 0) clipboard.write(payload);
-    else if (clearWhenEmpty) clipboard.clear();
+    // One write restores all formats together; a second write would replace
+    // the first.
+    if (Object.keys(snapshot.formats || {}).length > 0) {
+      await clipboard.write([new ClipboardItem(snapshot.formats)]);
+    } else if (clearWhenEmpty) {
+      clipboard.clear();
+    }
   } catch {
-    // Keep paste's existing best-effort text fallback. Restoration must not
-    // mask the original capture error if the clipboard remains unavailable.
+    // Keep paste's existing best-effort text fallback.
     try {
-      clipboard.writeText(snapshot.text || "");
+      await clipboard.writeText(snapshot.text || "");
     } catch {
       // The OS refused both restoration attempts.
     }

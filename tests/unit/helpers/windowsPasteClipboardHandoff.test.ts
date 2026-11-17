@@ -20,12 +20,12 @@ describe("Windows clipboard handoff through the renderer", () => {
     async (evidence) => {
       vi.useFakeTimers();
       const clipboard = {
-        readText: () => "old clipboard",
-        readHTML: () => "",
-        readRTF: () => "",
-        readImage: () => ({ isEmpty: () => true }),
-        writeText: vi.fn(),
-        write: vi.fn(),
+        read: async () => [
+          { types: ["text/plain"], getType: async () => new Blob(["old clipboard"]) },
+        ],
+        readText: async () => "old clipboard",
+        writeText: vi.fn(async () => {}),
+        write: vi.fn(async () => {}),
       };
       const module = { exports: undefined as any };
       vm.runInNewContext(fs.readFileSync(filename, "utf8"), {
@@ -36,7 +36,7 @@ describe("Windows clipboard handoff through the renderer", () => {
         console,
         process: { platform: "win32", env: {} },
         require: (name: string) => {
-          if (name === "electron") return { clipboard, app: {} };
+          if (name === "electron") return { clipboard, ClipboardItem: class {}, app: {} };
           return requireHelper(name);
         },
       });
