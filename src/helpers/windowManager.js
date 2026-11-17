@@ -9,6 +9,7 @@ const DevServerManager = require("./devServerManager");
 const debugLogger = require("./debugLogger");
 const microphoneAccess = require("./microphoneAccess");
 const { applyNavigationGuard } = require("./navigationGuard");
+const { attachRendererCrashRecovery } = require("./rendererCrashRecovery");
 const { normalizeControlPanelDestination } = require("./controlPanelNavigation");
 const {
   isScreenPointInOverlayRegions,
@@ -514,6 +515,17 @@ class WindowManager {
     this.mainWindow.webContents.on("did-finish-load", () => {
       this.mainWindow.setTitle("Voice Recorder");
       this.enforceMainWindowOnTop();
+    });
+
+    // A crashed overlay page left dictation dead until the app restarted:
+    // the window stayed, but nothing in it answered the hotkey.
+    const overlayWindow = this.mainWindow;
+    attachRendererCrashRecovery(overlayWindow, {
+      label: "Dictation overlay",
+      reload: async () => {
+        if (this.mainWindow !== overlayWindow || overlayWindow.isDestroyed()) return;
+        await this.loadMainWindow();
+      },
     });
 
     // Now load the window content
