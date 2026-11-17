@@ -29,7 +29,7 @@ const mediaController = require("./mediaController");
 const micWatcher = require("./micWatcher");
 const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
-const { isCancelledError } = require("./whisperServer");
+const { isCancelledError, WHISPER_BUSY_WITH_FILE } = require("./whisperServer");
 const { createOpenDialogFolderMemory } = require("./openDialogFolderMemory");
 const {
   MAX_AUTO_THREADS,
@@ -968,6 +968,14 @@ class IPCHandlers {
         if (isCancelledError(error)) {
           debugLogger.info("Local Whisper fallback cancelled", { jobId });
           return { success: false, cancelled: true, jobId };
+        }
+        if (error?.code === WHISPER_BUSY_WITH_FILE) {
+          debugLogger.info("Dictation refused: a file is being transcribed on another model");
+          return {
+            success: false,
+            error: "busy_with_file",
+            message: "A file is being transcribed",
+          };
         }
         debugLogger.error("Local Whisper transcription error", error);
         const errorMessage = error.message || "Unknown error";

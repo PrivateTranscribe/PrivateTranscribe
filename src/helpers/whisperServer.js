@@ -80,6 +80,8 @@ const HEALTH_CHECK_TIMEOUT_MS = 2000;
 // server silent for that long is treated as hung and restarted.
 const BUSY_SERVER_RECHECK_MS = 1000;
 const BUSY_SERVER_WAIT_LIMIT_MS = 30000;
+// Error code for a start refused because a file transcription holds the server.
+const WHISPER_BUSY_WITH_FILE = "WHISPER_BUSY_WITH_FILE";
 const DEFAULT_INPUT_EXTENSION = ".webm";
 const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
 const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
@@ -310,6 +312,9 @@ class WhisperServerManager {
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     this.activeTranscriptions = 0;
+    // File transcriptions among them. A dictation that needs another model is
+    // refused while one runs, since the restart would kill the file run.
+    this.activeFileTranscriptions = 0;
     // A settings change arrived while a transcription was in flight; the
     // restart it needs happens on the first start after that work.
     this.restartPendingForSettings = false;
@@ -826,6 +831,23 @@ class WhisperServerManager {
     // modelPath *before* any await so that a concurrent caller arriving while
     // we are awaiting stop() or _doStart() will see the new values and share
     // this promise rather than spawning a second server process.
+    // A file run can take an hour. Restarting under it for a dictation on
+    // another model threw away every piece it had finished, so the dictation
+    // is refused instead and the user is told why.
+    if (
+      options.fileMode !== true &&
+      this.activeFileTranscriptions > 0 &&
+      !(this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime)
+    ) {
+      debugLogger.info("whisper-server is transcribing a file; refusing a restart for", {
+        modelPath,
+        loadedModelPath: this.loadedModelPath,
+      });
+      throw Object.assign(new Error("A file is being transcribed"), {
+        code: WHISPER_BUSY_WITH_FILE,
+      });
+    }
+
     const prev = this.startupPromise ?? Promise.resolve();
     this.modelPath = modelPath; // claim the slot early
 
@@ -1392,7 +1414,9 @@ class WhisperServerManager {
     if (!this.ready || !this.process) {
       throw new Error("whisper-server is not running");
     }
+    const isFileRun = options?.fileMode === true;
     this.activeTranscriptions += 1;
+    if (isFileRun) this.activeFileTranscriptions += 1;
     this.lastUsedTime = Date.now();
     this.stoppedDueToIdle = false;
     this._scheduleIdleCheck();
@@ -1684,6 +1708,9 @@ class WhisperServerManager {
       });
     } finally {
       this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
+      if (isFileRun) {
+        this.activeFileTranscriptions = Math.max(0, this.activeFileTranscriptions - 1);
+      }
     }
   }
 
@@ -2300,3 +2327,4 @@ module.exports.detectServerBackend = detectServerBackend;
 // manager, IPC), so the predicate that identifies it lives in one place.
 module.exports.isCancelledError = isCancelledError;
 module.exports.createCancelledError = createCancelledError;
+module.exports.WHISPER_BUSY_WITH_FILE = WHISPER_BUSY_WITH_FILE;

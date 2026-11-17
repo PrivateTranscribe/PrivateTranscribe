@@ -480,8 +480,11 @@ class WhisperManager {
               ? "model changed"
               : "settings changed",
       });
+      // A dictation that would restart the server under a running file is
+      // refused there (code WHISPER_BUSY_WITH_FILE); a file run never is.
       await this.serverManager.start(modelPath, {
         printRealtime: requestOptions.fileMode === true && requestOptions.speakerDetection === true,
+        fileMode: requestOptions.fileMode === true,
       });
       this.currentServerModel = model;
     }

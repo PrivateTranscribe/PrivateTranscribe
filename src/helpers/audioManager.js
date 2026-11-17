@@ -295,6 +295,21 @@ const resolveUploadFileName = (originalFileName, mimeType) => {
   return `${safeBase}.${extension}`;
 };
 
+/**
+ * Local Whisper refused a dictation because the Transcribe page is running a
+ * file on another model, and loading this one would kill that file run.
+ */
+function createBusyWithFileError() {
+  return Object.assign(new Error("A file is being transcribed"), {
+    busyWithFile: true,
+    toast: {
+      title: "A file is being transcribed",
+      description:
+        "This dictation needs a different speech model, so it was not transcribed. Dictate again when the file is done.",
+    },
+  });
+}
+
 class AudioManager {
   constructor() {
     this.mediaRecorder = null;
@@ -2862,6 +2877,8 @@ class AudioManager {
         } else {
           throw new Error("No text transcribed");
         }
+      } else if (result.success === false && result.error === "busy_with_file") {
+        throw createBusyWithFileError();
       } else if (result.success === false && result.message === "No audio detected") {
         throw new Error("No audio detected");
       } else {
@@ -2869,6 +2886,11 @@ class AudioManager {
       }
     } catch (error) {
       if (error.message === "No audio detected") {
+        throw error;
+      }
+      // Refused on purpose so a running file is not killed. Sending the audio
+      // to the cloud instead is not what the user asked for here.
+      if (error.busyWithFile) {
         throw error;
       }
 

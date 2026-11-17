@@ -103,4 +103,30 @@ describe("AudioManager local Whisper fallback after a cancel", () => {
     expect(openai).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ text: "cloud heard this", source: "openai-fallback" });
   });
+
+  // A file on another model holds local Whisper. The dictation is refused so
+  // the file run survives, and the user is told why.
+  it("tells the user a file is being transcribed and keeps the audio off the cloud", async () => {
+    const manager = new AudioManager();
+    const openai = vi.spyOn(manager, "processWithOpenAIAPI");
+    const onError = vi.fn();
+    const onTranscriptionComplete = vi.fn();
+    manager.setCallbacks({ onError, onTranscriptionComplete } as never);
+    manager.isProcessing = true;
+    transcribeLocalWhisper.mockResolvedValue({
+      success: false,
+      error: "busy_with_file",
+      message: "A file is being transcribed",
+    });
+
+    await manager.processAudio(recording(), { durationSeconds: 3 });
+
+    expect(openai).not.toHaveBeenCalled();
+    expect(onTranscriptionComplete).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith({
+      title: "A file is being transcribed",
+      description:
+        "This dictation needs a different speech model, so it was not transcribed. Dictate again when the file is done.",
+    });
+  });
 });

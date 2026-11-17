@@ -113,6 +113,47 @@ describe("whisper-server start while a transcription is running", () => {
     expect(manager._doStart).toHaveBeenCalledOnce();
   });
 
+  describe("while a file is being transcribed", () => {
+    // A file with English speaker labels runs on the speaker model; a Danish
+    // dictation needs another one. The restart killed the file run.
+    beforeEach(() => {
+      manager.activeFileTranscriptions = 1;
+      manager.checkHealth = vi.fn(async () => true);
+    });
+
+    it("refuses a dictation on another model and leaves the server running", async () => {
+      await expect(manager.start("/models/ggml-small.bin")).rejects.toMatchObject({
+        code: WhisperServerManager.WHISPER_BUSY_WITH_FILE,
+        message: "A file is being transcribed",
+      });
+
+      expect(manager.stop).not.toHaveBeenCalled();
+      expect(manager._doStart).not.toHaveBeenCalled();
+      expect(manager.modelPath).not.toBe("/models/ggml-small.bin");
+    });
+
+    it("refuses a dictation that would switch the realtime output the file uses", async () => {
+      manager.printRealtimeEnabled = true;
+
+      await expect(manager.start(MODEL, { printRealtime: false })).rejects.toMatchObject({
+        code: WhisperServerManager.WHISPER_BUSY_WITH_FILE,
+      });
+      expect(manager.stop).not.toHaveBeenCalled();
+    });
+
+    it("lets a dictation on the same model share the running server", async () => {
+      await manager.start(MODEL);
+
+      expect(manager.stop).not.toHaveBeenCalled();
+    });
+
+    it("never refuses a file run itself", async () => {
+      await manager.start("/models/ggml-small.bin", { fileMode: true });
+
+      expect(manager._doStart).toHaveBeenCalledOnce();
+    });
+  });
+
   it("leaves the graphics card retry for later while a transcription runs", async () => {
     vi.spyOn(GpuBinaryManager.prototype, "getCudaBinaryPath").mockReturnValue(
       "/cuda/whisper-server.exe"
