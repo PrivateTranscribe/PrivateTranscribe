@@ -80,7 +80,9 @@ function ensureIpcListeners() {
 export async function initializeTranscriptions(limit = DEFAULT_LIMIT) {
   currentLimit = limit;
   ensureIpcListeners();
-  const items = await window.electronAPI.getTranscriptions(limit);
+  const loaded = await window.electronAPI.getTranscriptions(limit);
+  // The pages crash on anything but a list.
+  const items = Array.isArray(loaded) ? loaded : [];
   transcriptions = items;
   emit();
   return items;

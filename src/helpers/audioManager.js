@@ -548,6 +548,14 @@ class AudioManager {
     this._pooledStreamStale = false;
   }
 
+  /** Correction Memory is a beta: true only while the user has it turned on. */
+  isCorrectionMemoryOn() {
+    return (
+      typeof this._checkBetaFeatureAccess === "function" &&
+      Boolean(this._checkBetaFeatureAccess("correction-memory"))
+    );
+  }
+
   getCustomDictionaryPrompt() {
     try {
       const raw = localStorage.getItem("customDictionary");
@@ -559,7 +567,13 @@ class AudioManager {
       // Also include high-confidence correction targets as prompt hints
       // so whisper is more likely to recognize them
       // (correction memory is async/IPC, so we use a cached version if available)
-      if (this._cachedCorrectionHints && this._cachedCorrectionHints.length > 0) {
+      // Checked here, at every use: the cache is emptied only by a local
+      // dictation, and a cloud provider gets this prompt too.
+      if (
+        this.isCorrectionMemoryOn() &&
+        this._cachedCorrectionHints &&
+        this._cachedCorrectionHints.length > 0
+      ) {
         words.push(...this._cachedCorrectionHints);
       }
       return buildDictionaryPrompt(words);
@@ -2662,9 +2676,7 @@ class AudioManager {
     try {
       // Correction Memory is a beta. Only read or inject its hints when beta
       // features are on.
-      const correctionMemoryEnabled =
-        typeof this._checkBetaFeatureAccess === "function" &&
-        this._checkBetaFeatureAccess("correction-memory");
+      const correctionMemoryEnabled = this.isCorrectionMemoryOn();
       const correctionHintsPromise = correctionMemoryEnabled
         ? this.refreshCorrectionHints()
         : Promise.resolve().then(() => {

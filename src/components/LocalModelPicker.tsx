@@ -36,6 +36,15 @@ interface LocalModelPickerProps {
   colorScheme?: Exclude<ColorScheme, "blue">;
   className?: string;
   onDownloadComplete?: () => void;
+  /**
+   * Called instead of onModelSelect when a download ends after this picker
+   * has left the screen. The owner decides from what is saved whether the
+   * model should still become the active one.
+   */
+  onDownloadedWhileAway?: (
+    modelId: string,
+    atDownloadStart: { provider: string; model: string }
+  ) => void;
   compact?: boolean;
 }
 
@@ -49,6 +58,7 @@ export default function LocalModelPicker({
   colorScheme = "purple",
   className = "",
   onDownloadComplete,
+  onDownloadedWhileAway,
   compact = false,
 }: LocalModelPickerProps) {
   const [showAllModels, setShowAllModels] = useState(false);
@@ -132,15 +142,18 @@ export default function LocalModelPicker({
   const handleDownload = useCallback(
     (modelId: string) => {
       const providerAtStart = selectedProvider;
+      const modelAtStart = selectedModel;
       downloadModel(modelId, (id) => {
-        if (
-          selectionContext.current.active &&
-          selectionContext.current.provider === providerAtStart
-        )
-          onModelSelect(id);
+        if (!selectionContext.current.active) {
+          // The download outlived this picker: the user went to another page
+          // or another mode. onModelSelect belongs to a screen that is gone.
+          onDownloadedWhileAway?.(id, { provider: providerAtStart, model: modelAtStart });
+          return;
+        }
+        if (selectionContext.current.provider === providerAtStart) onModelSelect(id);
       });
     },
-    [downloadModel, onModelSelect, selectedProvider]
+    [downloadModel, onDownloadedWhileAway, onModelSelect, selectedModel, selectedProvider]
   );
 
   const handleDelete = useCallback(

@@ -15,6 +15,8 @@ import { modelRegistry } from "../models/ModelRegistry";
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
 import { isValidApiUrl } from "../helpers/urlValidation";
 import { createExternalLinkHandler } from "../utils/externalLinks";
+import { shouldSelectDownloadedLocalModel } from "../utils/localModelSelection";
+import { writeLocalStorageValue } from "../hooks/useLocalStorage";
 
 type CloudModelOption = {
   deprecated?: boolean;
@@ -71,6 +73,20 @@ interface ReasoningModelSelectorProps {
   customReasoningApiKey?: string;
   setCustomReasoningApiKey?: (key: string) => void;
   showAlertDialog: (dialog: { title: string; description: string }) => void;
+}
+
+// Kept outside the component: it runs after the component has unmounted.
+function selectLocalModelDownloadedWhileAway(
+  modelId: string,
+  atDownloadStart: { provider: string; model: string }
+) {
+  const saved = {
+    reasoningProvider: localStorage.getItem("reasoningProvider"),
+    reasoningModel: localStorage.getItem("reasoningModel"),
+  };
+  if (shouldSelectDownloadedLocalModel(saved, atDownloadStart)) {
+    writeLocalStorageValue("reasoningModel", modelId);
+  }
 }
 
 export default function ReasoningModelSelector({
@@ -904,6 +920,7 @@ export default function ReasoningModelSelector({
                 modelType="llm"
                 colorScheme="purple"
                 onDownloadComplete={loadDownloadedModels}
+                onDownloadedWhileAway={selectLocalModelDownloadedWhileAway}
               />
             </div>
           )}

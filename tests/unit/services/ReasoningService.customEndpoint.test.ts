@@ -134,8 +134,6 @@ describe("custom endpoint address", () => {
 });
 
 describe("provider switched while a cleanup is running", () => {
-  beforeEach(() => ReasoningService.clearApiKeyCache());
-
   it("keeps a custom cleanup on the custom address and key", async () => {
     localStorageMock.setItem("reasoningProvider", "custom");
     localStorageMock.setItem("cloudReasoningBaseUrl", CUSTOM_BASE);
