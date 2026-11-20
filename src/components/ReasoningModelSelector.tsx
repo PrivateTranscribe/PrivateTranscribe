@@ -17,6 +17,7 @@ import { isValidApiUrl } from "../helpers/urlValidation";
 import { createExternalLinkHandler } from "../utils/externalLinks";
 import { shouldSelectDownloadedLocalModel } from "../utils/localModelSelection";
 import { writeLocalStorageValue } from "../hooks/useLocalStorage";
+import { useUnsavedApiKeys, type ApiKeyId } from "../utils/apiKeySaveState";
 
 type CloudModelOption = {
   deprecated?: boolean;
@@ -119,6 +120,7 @@ export default function ReasoningModelSelector({
         ? "local"
         : "cloud"
   );
+  const unsavedApiKeys = useUnsavedApiKeys();
   const [selectedCloudProvider, setSelectedCloudProvider] = useState(
     ["openai", "anthropic", "gemini", "groq", "custom"].includes(localReasoningProvider)
       ? localReasoningProvider
@@ -591,32 +593,46 @@ export default function ReasoningModelSelector({
       </SelectContent>
     </Select>
   );
-  const connection = {
+  const connection:
+    | { id: ApiKeyId; key: string; setKey: (key: string) => void; url: string; name: string }
+    | undefined = {
     openai: {
+      id: "openai" as const,
       key: openaiApiKey,
       setKey: setOpenaiApiKey,
       url: "https://platform.openai.com/api-keys",
       name: "OpenAI",
     },
     anthropic: {
+      id: "anthropic" as const,
       key: anthropicApiKey,
       setKey: setAnthropicApiKey,
       url: "https://console.anthropic.com/settings/keys",
       name: "Anthropic",
     },
     gemini: {
+      id: "gemini" as const,
       key: geminiApiKey,
       setKey: setGeminiApiKey,
       url: "https://aistudio.google.com/app/api-keys",
       name: "Google",
     },
     groq: {
+      id: "groq" as const,
       key: groqApiKey,
       setKey: setGroqApiKey,
       url: "https://console.groq.com/keys",
       name: "Groq",
     },
   }[selectedCloudProvider];
+  // "Saved" only once the key reached the disk: a key whose latest save failed
+  // works until the app closes and is then gone.
+  const keyNotSaved = Boolean(connection?.key.trim() && unsavedApiKeys.has(connection.id));
+  const keyStatus = !connection?.key.trim()
+    ? "API key needed"
+    : keyNotSaved
+      ? "API key not saved"
+      : "API key saved";
 
   return (
     <div className="rounded-xl border border-border bg-card divide-y divide-border">
@@ -699,8 +715,11 @@ export default function ReasoningModelSelector({
                     </p>
                   </div>
                   {connection && (
-                    <span className="text-xs text-muted-foreground">
-                      {connection.key.trim() ? "API key saved" : "API key needed"}
+                    <span
+                      role="status"
+                      className={`text-xs ${keyNotSaved ? "text-destructive" : "text-muted-foreground"}`}
+                    >
+                      {keyStatus}
                     </span>
                   )}
                 </div>
@@ -720,6 +739,7 @@ export default function ReasoningModelSelector({
                             connection.setKey(key);
                           }}
                           label={connection.name + " API key"}
+                          saved={!keyNotSaved}
                           helpText=""
                         />
                         <a
@@ -740,12 +760,17 @@ export default function ReasoningModelSelector({
                         )}
                       </div>
                     ) : (
-                      <SettingsDisclosure title="Connection" status="API key saved">
+                      <SettingsDisclosure title="Connection" status={keyStatus}>
                         <ApiKeyInput
                           apiKey={connection.key}
                           setApiKey={connection.setKey}
                           label={connection.name + " API key"}
-                          helpText="Saved automatically on this PC."
+                          saved={!keyNotSaved}
+                          helpText={
+                            keyNotSaved
+                              ? "Not saved. It works until you close the app."
+                              : "Saved automatically on this PC."
+                          }
                         />
                       </SettingsDisclosure>
                     )}

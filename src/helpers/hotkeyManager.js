@@ -270,6 +270,12 @@ class HotkeyManager {
     this.activationMode = "tap";
     this.windowsNativeListenerActive = false;
     this.sessionHotkeyEnabled = true;
+    /** The app's EnvironmentManager, which persists DICTATION_KEY. */
+    this.environmentManager = null;
+  }
+
+  setEnvironmentManager(environmentManager) {
+    this.environmentManager = environmentManager;
   }
 
   setActivationMode(mode) {
@@ -738,12 +744,11 @@ class HotkeyManager {
     // Save to environment variable for file-based persistence (more reliable)
     process.env.DICTATION_KEY = hotkey;
 
-    // Persist to .env file for reliable startup
+    // Persist to .env file for reliable startup. The app's own manager does it:
+    // a second one would write keys.enc before it had read the saved keys.
     try {
-      // Lazy require to avoid circular dependencies
-      const EnvironmentManager = require("./environment");
-      const envManager = new EnvironmentManager();
-      envManager.saveAllKeysToEnvFile();
+      if (!this.environmentManager) throw new Error("no environment manager");
+      await this.environmentManager.saveAllKeysToEnvFile();
       debugLogger.log(`[HotkeyManager] Saved hotkey "${hotkey}" to .env file`);
     } catch (err) {
       debugLogger.warn("[HotkeyManager] Failed to persist hotkey to .env file:", err.message);

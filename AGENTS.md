@@ -38,6 +38,8 @@ Playwright drives the real Electron app (`playwright.config.ts`, specs and fixtu
 - `tests/e2e/fixtures/electron-app.ts` gives each test a throwaway `--user-data-dir`, blanks every `*_API_KEY` so a run never reaches a paid provider, pre-denies analytics, and sets `PRIVATETRANSCRIBE_DIAG_DISABLE_*` flags for the global shortcut, key listener, tray, audio ducking and the first-run start-at-login default, so no run writes the HKCU Run key.
 - Windows open at opacity 0, click-through and inactive, so a run never steals focus; an app-launch spec asserts this. Some specs still use the clipboard and send keys.
 - A spec overrides `completeOnboarding` (default `true`) or `appEnv` with `test.use({ ... })`.
+- To drive a fix in the running app, use `tests/e2e/fixtures/app-drive.ts` (records pastes, catches a manager's live instance, taps the main log) and `local-stub-server.ts` (a stand-in engine or custom endpoint). Put the fault where a user meets it, then see the spec go red with the fix reversed: `git diff <fix>^ <fix> -- src preload.js | git apply -R`.
+- Specs that run a real engine need `resources/bin`, which git ignores: `npm run download:whisper-cpp` and `npm run download:llama-server` fill it.
 - Before a release, `PT_E2E_EXECUTABLE=<out>\win-unpacked\PrivateTranscribe.exe` runs the specs against a packaged build, which catches what only the installer ships: asar paths, unpacked native modules, bundled DLLs. Build one with `npm run pack -- --config.directories.output=<out>`, so a copy Kristian runs from `dist\win-unpacked` stays untouched.
 
 ## Architecture

@@ -10,6 +10,8 @@ interface ApiKeyInputProps {
   label?: string;
   helpText?: React.ReactNode;
   variant?: "default" | "purple";
+  /** False while the key's latest save did not reach the disk; hides the tick. */
+  saved?: boolean;
 }
 
 export default function ApiKeyInput({
@@ -20,8 +22,9 @@ export default function ApiKeyInput({
   label = "API Key",
   helpText = "Get your API key from platform.openai.com",
   variant = "default",
+  saved = true,
 }: ApiKeyInputProps) {
-  const hasKey = apiKey.length > 0;
+  const hasKey = apiKey.length > 0 && saved;
   const variantClasses = variant === "purple" ? "border-primary focus:border-primary" : "";
 
   return (

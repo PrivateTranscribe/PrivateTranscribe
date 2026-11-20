@@ -431,7 +431,9 @@ class IPCHandlers {
         set: Object.keys(setVars),
         cleared: clearVars.filter((k) => !process.env[k]),
       });
-      this.environmentManager.saveAllKeysToEnvFile();
+      this.environmentManager.saveAllKeysToEnvFile().catch((error) => {
+        debugLogger.warn("Failed to persist startup env vars", { error: error.message });
+      });
     }
   }
 
@@ -2388,7 +2390,7 @@ class IPCHandlers {
       "process-anthropic-reasoning",
       async (event, text, modelId, agentName, config) => {
         try {
-          const apiKey = this.environmentManager.getAnthropicKey();
+          const apiKey = await this.environmentManager.getAnthropicKey();
 
           if (!apiKey) {
             throw new Error("Anthropic API key not configured");

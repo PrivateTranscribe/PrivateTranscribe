@@ -41,7 +41,7 @@ const TOUCHED_KEYS = [
   "DICTATION_KEY_OLD",
 ];
 
-type Manager = { saveAllKeysToEnvFile: () => unknown };
+type Manager = { ready: Promise<void>; saveAllKeysToEnvFile: () => Promise<unknown> };
 
 let userDataDir = "";
 let encryptionAvailable = true;
@@ -50,18 +50,24 @@ function makeRuntime() {
   return {
     app: { getPath: () => userDataDir },
     safeStorage: {
-      isEncryptionAvailable: () => encryptionAvailable,
+      isAsyncEncryptionAvailable: async () => encryptionAvailable,
       // Reversible stand-in for the OS keychain.
-      encryptString: (plain: string) => Buffer.from(`enc:${plain}`, "utf8"),
-      decryptString: (buf: Buffer) => buf.toString("utf8").slice(4),
+      encryptStringAsync: async (plain: string) => Buffer.from(`enc:${plain}`, "utf8"),
+      decryptStringAsync: async (buf: Buffer) => ({
+        shouldReEncrypt: false,
+        result: buf.toString("utf8").slice(4),
+      }),
     },
   };
 }
 
+/** A manager once its saved keys have loaded and any migration has run. */
 async function createManager(): Promise<Manager> {
   const mod = await import("../../../src/helpers/environment.js");
   const EnvironmentManager = (mod.default ?? mod) as new (runtime: unknown) => Manager;
-  return new EnvironmentManager(makeRuntime());
+  const manager = new EnvironmentManager(makeRuntime());
+  await manager.ready;
+  return manager;
 }
 
 function envPath() {
@@ -114,7 +120,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     const manager = await createManager();
 
     process.env.DICTATION_KEY = "F9";
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(
       expectedFile(
@@ -152,7 +158,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     process.env.DICTATION_KEY = "F9";
     process.env.REASONING_PROVIDER = "anthropic";
     process.env.LOCAL_WHISPER_MODEL = "small";
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(
       expectedFile(
@@ -174,7 +180,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     // What stopping the Parakeet server does.
     delete process.env.LOCAL_TRANSCRIPTION_PROVIDER;
     delete process.env.PARAKEET_MODEL;
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(expectedFile("", "PT_LOG_LEVEL=debug"));
   });
@@ -193,7 +199,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     writeEnvFile("export OPENAI_API_KEY=sk-legacy-secret\nPT_LOG_LEVEL=debug\n");
     const manager = await createManager();
 
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(expectedFile("", "PT_LOG_LEVEL=debug"));
     expect(fs.readFileSync(storePath(), "utf8")).toContain("sk-legacy-secret");
@@ -204,7 +210,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     writeEnvFile("PT_LOG_LEVEL=debug\nOPENAI_API_KEY=sk-legacy-secret\n");
     const manager = await createManager();
 
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(
       expectedFile("OPENAI_API_KEY=sk-legacy-secret", "", "PT_LOG_LEVEL=debug")
@@ -228,9 +234,9 @@ describe("EnvironmentManager plain .env rewrite", () => {
     );
     const manager = await createManager();
 
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
     const first = readEnvFile();
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(first);
     expect(first).toBe(
@@ -252,7 +258,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     );
     const manager = await createManager();
 
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     const plain = readEnvFile();
     expect(plain).not.toContain("\r");
@@ -280,7 +286,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     );
     const manager = await createManager();
 
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(expectedFile("REASONING_PROVIDER=openai", "", "PT_LOG_LEVEL=debug"));
   });
@@ -290,7 +296,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     const manager = await createManager();
     fs.rmSync(envPath());
 
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(expectedFile("REASONING_PROVIDER=openai"));
   });
@@ -302,7 +308,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     writeEnvFile("REASONING_PROVIDER=openai\n");
     const manager = await createManager();
 
-    manager.saveAllKeysToEnvFile();
+    await manager.saveAllKeysToEnvFile();
 
     expect(readEnvFile()).toBe(expectedFile("REASONING_PROVIDER=openai"));
   });

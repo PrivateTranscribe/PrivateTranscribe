@@ -325,7 +325,14 @@ describe("F6 — a run with no measurable progress says so honestly (FIXED)", ()
     return manager;
   }
 
-  it("tells the page how much audio a single-pass run covers", async () => {
+  /**
+   * The two tests below build about twenty minutes of audio in memory and take
+   * 6 to 7 seconds on a good day. A slow CI runner pushed one past the suite's
+   * 10 second limit, so they get their own.
+   */
+  const LONG_AUDIO = { timeout: 30_000 };
+
+  it("tells the page how much audio a single-pass run covers", LONG_AUDIO, async () => {
     const manager = stubbedManager();
     const events: any[] = [];
 
@@ -345,7 +352,7 @@ describe("F6 — a run with no measurable progress says so honestly (FIXED)", ()
     }
   });
 
-  it("keeps the real per-chunk steps on a file long enough to have them", async () => {
+  it("keeps the real per-chunk steps on a file long enough to have them", LONG_AUDIO, async () => {
     const manager = stubbedManager();
     const events: any[] = [];
 
