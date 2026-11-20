@@ -72,6 +72,11 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        # On Linux, onnxruntime-node downloads its CUDA build from ONNX Runtime's
+        # GitHub releases. The app never uses it (Windows only, CPU), and that
+        # download fails since the repository left GitHub in November 2026.
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
         run: npm ci
 
       # Whisper models and the FLEURS split are large and never change, so a
