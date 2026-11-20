@@ -17,6 +17,7 @@ import DictionaryPage from "./pages/DictionaryPage";
 import ReadAloudPage from "./pages/ReadAloudPage";
 import AIEnhancementPage from "./pages/AIEnhancementPage";
 import ConversePage from "./pages/ConversePage";
+import NarratorPage from "./pages/NarratorPage";
 import ActionEnginePage from "./pages/ActionEnginePage";
 import DictationPage from "./pages/DictationPage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
@@ -72,6 +73,7 @@ export default function ControlPanelShell() {
       "read-aloud",
       "ai-enhancement",
       "converse",
+      "narrator",
       "correction-memory",
       "action-engine",
       "settings",
@@ -326,6 +328,8 @@ export default function ControlPanelShell() {
         return <AIEnhancementPage />;
       case "converse":
         return <ConversePage />;
+      case "narrator":
+        return <NarratorPage />;
       case "correction-memory":
         return <DictionaryPage showCorrections />;
       case "action-engine":

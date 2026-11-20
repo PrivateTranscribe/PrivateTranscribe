@@ -7,6 +7,7 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
   "read-aloud",
   "ai-enhancement",
   "converse",
+  "narrator",
   "correction-memory",
   "action-engine",
   "settings",
