@@ -438,7 +438,20 @@ class WhisperManager {
     );
   }
 
-  async transcribeViaServer(
+  async transcribeViaServer(...args) {
+    // A file run counts as busy from before its model loads until its last
+    // piece, so a dictation on another model cannot restart the server under it.
+    const fileMode = args[6]?.fileMode === true;
+    if (!fileMode) return this._transcribeViaServerRun(...args);
+    this.serverManager.beginFileRun?.();
+    try {
+      return await this._transcribeViaServerRun(...args);
+    } finally {
+      this.serverManager.endFileRun?.();
+    }
+  }
+
+  async _transcribeViaServerRun(
     audioBlob,
     model,
     language,
@@ -480,8 +493,11 @@ class WhisperManager {
               ? "model changed"
               : "settings changed",
       });
+      // A dictation that would restart the server under a running file is
+      // refused there (code WHISPER_BUSY_WITH_FILE); a file run never is.
       await this.serverManager.start(modelPath, {
         printRealtime: requestOptions.fileMode === true && requestOptions.speakerDetection === true,
+        fileMode: requestOptions.fileMode === true,
       });
       this.currentServerModel = model;
     }

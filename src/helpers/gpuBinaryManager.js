@@ -504,13 +504,28 @@ class GpuBinaryManager {
       // for was running invisibly in the background.
       if (!this._downloadPromise) {
         this._downloading = true;
-        this._downloadPromise = this._runCudaDownload(spec).finally(() => {
-          this._downloadPromise = null;
-          this._downloading = false;
-          // Drop the final progress frame so a later status poll cannot report
-          // a stale 100% as if a download were still running.
-          this._lastProgress = null;
-        });
+        this._downloadPromise = this._runCudaDownload(spec)
+          .then((result) => {
+            // Every card follows these events, including for downloads it did
+            // not start. Without a last frame on failure or cancel, a card
+            // that joined the download sat on "Downloading" for good.
+            if (!result?.success) {
+              const cancelled = result?.error === "Download cancelled";
+              this._emitProgress({
+                phase: cancelled ? "cancelled" : "failed",
+                percent: 0,
+                error: cancelled ? null : result?.error || "GPU engine download failed",
+              });
+            }
+            return result;
+          })
+          .finally(() => {
+            this._downloadPromise = null;
+            this._downloading = false;
+            // Drop the final progress frame so a later status poll cannot report
+            // a stale 100% as if a download were still running.
+            this._lastProgress = null;
+          });
       }
       return await this._downloadPromise;
     } finally {

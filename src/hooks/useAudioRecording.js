@@ -310,6 +310,10 @@ export const useAudioRecording = (toast, options = {}) => {
 
     manager.setCallbacks({
       onNoAudioDetected: handleNoAudioDetected,
+      onNotice: (notice) => {
+        if (disposed || !notice) return;
+        toastRef.current?.({ ...notice, variant: "default", duration: 8000 });
+      },
       onStateChange: ({ isRecording, isProcessing, longSession }) => {
         if (disposed) {
           return;

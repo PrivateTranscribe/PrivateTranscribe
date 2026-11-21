@@ -2,6 +2,9 @@ const promptData = require("../config/promptData.json");
 
 const UNIFIED_SYSTEM_PROMPT = promptData.UNIFIED_SYSTEM_PROMPT;
 const DICTIONARY_SUFFIX = promptData.DICTIONARY_SUFFIX;
+// The same name the AI Enhancement page shows when the field is empty, so the
+// page and the AI never answer to two different names.
+const DEFAULT_AGENT_NAME = promptData.DEFAULT_AGENT_NAME;
 
 function getSystemPrompt(
   agentName,
@@ -10,7 +13,7 @@ function getSystemPrompt(
   preferredLanguage,
   customSystemPrompt
 ) {
-  const name = (agentName && agentName.trim()) || "Assistant";
+  const name = (agentName && agentName.trim()) || DEFAULT_AGENT_NAME;
   const promptTemplate =
     typeof customSystemPrompt === "string" ? customSystemPrompt : UNIFIED_SYSTEM_PROMPT;
   let prompt = promptTemplate.replace(/\{\{agentName\}\}/g, name);
@@ -31,6 +34,7 @@ function getSystemPrompt(
 }
 
 module.exports = {
+  DEFAULT_AGENT_NAME,
   UNIFIED_SYSTEM_PROMPT,
   getSystemPrompt,
 };

@@ -149,22 +149,19 @@ const STARTER_TEMPLATES: StarterTemplate[] = [
       enabled: true,
     },
   },
-  {
-    icon: Mic,
-    name: "Switch to Push-to-Talk",
-    description: "Toggle dictation mode with your voice.",
-    triggerExample: '"push to talk mode"',
-    form: {
-      name: "Switch to Push-to-Talk",
-      description: "Switch dictation to push-to-talk",
-      triggerPhrase: "push to talk mode",
-      triggerMode: "contains",
-      actionType: "dictation-mode",
-      actionConfig: { mode: "push" },
-      enabled: true,
-    },
-  },
 ];
+
+// "Switch dictation mode" is hidden until it is decided what a mode is: an AI
+// writing style, or a switch between hotkey modes. Today it only adds a line
+// to the cleanup instructions, cannot be cleared, and is gone after a restart.
+// An action of this type saved earlier still shows and can be edited.
+const HIDDEN_ACTION_TYPES: ReadonlySet<ActionType> = new Set(["dictation-mode"]);
+
+function selectableActionTypes(current: ActionType): ActionType[] {
+  return (Object.keys(ACTION_TYPE_LABELS) as ActionType[]).filter(
+    (t) => !HIDDEN_ACTION_TYPES.has(t) || t === current
+  );
+}
 
 const DEFAULT_CONFIG_FOR_TYPE: Record<ActionType, ActionConfig> = {
   shell: { command: "" },
@@ -546,7 +543,7 @@ function ActionFormDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(Object.keys(ACTION_TYPE_LABELS) as ActionType[]).map((t) => (
+                {selectableActionTypes(form.actionType).map((t) => (
                   <SelectItem key={t} value={t}>
                     {ACTION_TYPE_LABELS[t]}
                   </SelectItem>
@@ -1092,7 +1089,7 @@ export default function ActionEnginePage() {
             ) : actions.length === 0 ? (
               <div className="space-y-4 py-4">
                 <SectionLabel>Start with a template</SectionLabel>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {STARTER_TEMPLATES.map((tpl) => {
                     const Icon = tpl.icon;
                     return (

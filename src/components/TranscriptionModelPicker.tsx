@@ -36,6 +36,10 @@ import { API_ENDPOINTS, normalizeBaseUrl } from "../config/constants";
 import { createExternalLinkHandler } from "../utils/externalLinks";
 import { isValidApiUrl } from "../helpers/urlValidation";
 import { getWhisperPerfRating } from "../utils/modelAccuracy";
+import {
+  isDictationWhisperModel,
+  pickReplacementWhisperModel,
+} from "../utils/whisperReplacementModel";
 import { useParakeetSetup, PARAKEET_FALLBACK_LINE } from "../hooks/useParakeetSetup";
 import {
   PARAKEET_DOWNLOAD_MB,
@@ -490,13 +494,11 @@ export default function TranscriptionModelPicker({
       // replaced setup's pick for this PC and language without telling anyone.
       if (variant === "onboarding") return;
 
-      const downloaded = loadedModels.filter((m) => m.downloaded);
-      const isCurrentDownloaded = loadedModels.find((m) => m.model === current)?.downloaded;
-
-      if (!isCurrentDownloaded && downloaded.length > 0) {
-        onLocalModelSelectRef.current(downloaded[0].model);
-      } else if (!isCurrentDownloaded && downloaded.length === 0) {
-        onLocalModelSelectRef.current("");
+      // Skips the English-only speaker-turn model, which would turn Danish
+      // dictation into poor English.
+      const replacement = pickReplacementWhisperModel(loadedModels, current);
+      if (replacement !== undefined) {
+        onLocalModelSelectRef.current(replacement);
       }
     },
     [variant]
@@ -837,7 +839,7 @@ export default function TranscriptionModelPicker({
       // small-en-tdrz is a special-purpose speaker-diarization model, downloaded on
       // demand from the Transcribe page's speaker-detection flow — not a general
       // dictation model, so keep it out of this picker.
-      (model) => model.model !== "small-en-tdrz"
+      (model) => isDictationWhisperModel(model.model)
     );
 
     const isOnboarding = variant === "onboarding";

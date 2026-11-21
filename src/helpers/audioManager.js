@@ -1,4 +1,6 @@
 import ReasoningService from "../services/ReasoningService";
+import { getModelProvider } from "../models/ModelRegistry";
+import { classifyCleanupFailure, getCleanupFailureNotice } from "../utils/cleanupFailureNotice";
 import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
 import logger from "../utils/logger";
 import { resolveMicWarmWindowMs } from "../utils/micWarmWindow";
@@ -293,6 +295,21 @@ const resolveUploadFileName = (originalFileName, mimeType) => {
   return `${safeBase}.${extension}`;
 };
 
+/**
+ * Local Whisper refused a dictation because the Transcribe page is running a
+ * file on another model, and loading this one would kill that file run.
+ */
+function createBusyWithFileError() {
+  return Object.assign(new Error("A file is being transcribed"), {
+    busyWithFile: true,
+    toast: {
+      title: "A file is being transcribed",
+      description:
+        "This dictation needs a different speech model, so it was not transcribed. Dictate again when the file is done.",
+    },
+  });
+}
+
 class AudioManager {
   constructor() {
     this.mediaRecorder = null;
@@ -332,6 +349,9 @@ class AudioManager {
     this.discardCurrentRecording = false;
     this.reasoningAvailabilityCache = { value: false, expiresAt: 0 };
     this.cachedReasoningPreference = null;
+    // Kinds of AI cleanup failure already told to the user. Cleared by the next
+    // cleanup that works, so a new failure after a recovery is told again.
+    this.shownCleanupNotices = new Set();
     this._cachedAudioInputs = null;
     this._pooledStream = null;
     this._pooledStreamReleaseTimer = null;
@@ -660,9 +680,12 @@ class AudioManager {
     return capture.lateRead;
   }
 
-  setCallbacks({ onStateChange, onError, onTranscriptionComplete, onNoAudioDetected }) {
+  setCallbacks({ onStateChange, onError, onTranscriptionComplete, onNoAudioDetected, onNotice }) {
     this.onStateChange = onStateChange;
     this.onError = onError;
+    // A heads-up about a dictation that still went through, such as one
+    // pasted without the AI cleanup the user switched on.
+    this.onNotice = onNotice;
     this.onTranscriptionComplete = onTranscriptionComplete;
     // Main sends Whisper's silence as an IPC event; Parakeet's arrives in its result.
     this.onNoAudioDetected = onNoAudioDetected;
@@ -2854,6 +2877,8 @@ class AudioManager {
         } else {
           throw new Error("No text transcribed");
         }
+      } else if (result.success === false && result.error === "busy_with_file") {
+        throw createBusyWithFileError();
       } else if (result.success === false && result.message === "No audio detected") {
         throw new Error("No audio detected");
       } else {
@@ -2861,6 +2886,11 @@ class AudioManager {
       }
     } catch (error) {
       if (error.message === "No audio detected") {
+        throw error;
+      }
+      // Refused on purpose so a running file is not killed. Sending the audio
+      // to the cloud instead is not what the user asked for here.
+      if (error.busyWithFile) {
         throw error;
       }
 
@@ -3326,6 +3356,8 @@ class AudioManager {
   }
 
   async isReasoningAvailable() {
+    // Set only when cleanup is on and the selected provider is not set up.
+    this.cleanupSkippedForProvider = false;
     if (this.codingPromptSession) return false;
     if (typeof window === "undefined" || !window.localStorage) {
       return false;
@@ -3349,6 +3381,7 @@ class AudioManager {
       this.cachedReasoningPreference === cacheKey;
 
     if (cacheValid) {
+      this.cleanupSkippedForProvider = this.reasoningAvailabilityCache.providerNotReady === true;
       return this.reasoningAvailabilityCache.value;
     }
 
@@ -3382,7 +3415,10 @@ class AudioManager {
       this.reasoningAvailabilityCache = {
         value: isAvailable,
         expiresAt: now + REASONING_CACHE_TTL,
+        // Cleanup is on, but the selected provider is not set up.
+        providerNotReady: !isAvailable,
       };
+      this.cleanupSkippedForProvider = !isAvailable;
       this.cachedReasoningPreference = cacheKey;
 
       return isAvailable;
@@ -3395,10 +3431,25 @@ class AudioManager {
       this.reasoningAvailabilityCache = {
         value: false,
         expiresAt: now + REASONING_CACHE_TTL,
+        providerNotReady: true,
       };
+      this.cleanupSkippedForProvider = true;
       this.cachedReasoningPreference = cacheKey;
       return false;
     }
+  }
+
+  /** Tells the user once per kind of failure why a dictation was not cleaned up. */
+  noticeCleanupSkipped(kind, model, selectedProvider) {
+    if (!kind || this.shownCleanupNotices.has(kind)) return;
+    this.shownCleanupNotices.add(kind);
+    let provider = null;
+    try {
+      provider = getModelProvider(model, selectedProvider);
+    } catch {
+      /* the notice falls back to "The AI provider" */
+    }
+    this.onNotice?.(getCleanupFailureNotice(kind, provider));
   }
 
   /**
@@ -3505,6 +3556,9 @@ class AudioManager {
     }
 
     const useReasoning = await this.isReasoningAvailable();
+    if (!useReasoning && this.cleanupSkippedForProvider && !this.isDictationCancelled(metadata)) {
+      this.noticeCleanupSkipped("not_set_up", reasoningModel, reasoningProvider);
+    }
 
     logger.logReasoning("REASONING_CHECK", {
       useReasoning,
@@ -3552,6 +3606,7 @@ class AudioManager {
           }
         );
 
+        this.shownCleanupNotices.clear();
         logger.logReasoning("REASONING_SUCCESS", {
           resultLength: result.length,
           resultPreview: result.substring(0, 100) + (result.length > 100 ? "..." : ""),
@@ -3573,6 +3628,14 @@ class AudioManager {
           fallbackToCleanup: true,
         });
         console.error(`Reasoning failed (${source}):`, error.message);
+        // The raw text is still pasted below; say why it was not cleaned up.
+        if (!this.isDictationCancelled(metadata)) {
+          this.noticeCleanupSkipped(
+            classifyCleanupFailure(error),
+            reasoningModel,
+            reasoningProvider
+          );
+        }
       }
     }
 

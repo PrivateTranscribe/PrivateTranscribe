@@ -2,6 +2,9 @@ import promptData from "./promptData.json";
 
 export const UNIFIED_SYSTEM_PROMPT = promptData.UNIFIED_SYSTEM_PROMPT;
 const DICTIONARY_SUFFIX = promptData.DICTIONARY_SUFFIX;
+// The name the AI answers to when the user cleared the field. The AI
+// Enhancement page shows the same one (utils/agentName.ts).
+export const DEFAULT_AGENT_NAME = promptData.DEFAULT_AGENT_NAME;
 
 export function getSystemPrompt(
   agentName: string | null,
@@ -10,7 +13,7 @@ export function getSystemPrompt(
   preferredLanguage?: string | null,
   customSystemPrompt?: string
 ): string {
-  const name = agentName?.trim() || "Assistant";
+  const name = agentName?.trim() || DEFAULT_AGENT_NAME;
 
   let promptTemplate =
     typeof customSystemPrompt === "string" ? customSystemPrompt : UNIFIED_SYSTEM_PROMPT;

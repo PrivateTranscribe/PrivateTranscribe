@@ -89,8 +89,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Correction memory
   getCorrectionMemory: (limit) => ipcRenderer.invoke("db-get-correction-memory", limit),
-  confirmCorrection: (source, target) =>
-    ipcRenderer.invoke("db-confirm-correction", source, target),
+  confirmCorrection: (source, target, options) =>
+    ipcRenderer.invoke("db-confirm-correction", source, target, options),
   deleteCorrection: (source) => ipcRenderer.invoke("db-delete-correction", source),
 
   // Stats functions
