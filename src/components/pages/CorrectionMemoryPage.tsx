@@ -128,7 +128,9 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
     try {
       setSaving(true);
       setError(null);
-      await window.electronAPI?.confirmCorrection?.(s, t);
+      // "Update correction" promises to overwrite the stored target for this
+      // source, so the old row goes rather than competing with the new one.
+      await window.electronAPI?.confirmCorrection?.(s, t, { replace: Boolean(existingForSource) });
       setSource("");
       setTarget("");
       await fetchRows();

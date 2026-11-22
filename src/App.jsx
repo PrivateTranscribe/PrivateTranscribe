@@ -29,6 +29,7 @@ import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
 import { readStoredReadAloudSpeed } from "./utils/readAloudSpeed";
+import { getHotkeyListenerNotice } from "./utils/hotkeyListenerNotice";
 import { VOICE_STORAGE_KEY, readStoredVoiceId } from "./models/kokoroVoices";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
@@ -985,9 +986,17 @@ export default function App() {
       });
     });
 
+    const unsubscribeListener = window.electronAPI?.onWindowsPushToTalkUnavailable?.(
+      (_event, data) => {
+        const notice = getHotkeyListenerNotice(data);
+        if (notice) toast({ ...notice, variant: "destructive", duration: 12000 });
+      }
+    );
+
     return () => {
       unsubscribeFallback?.();
       unsubscribeFailed?.();
+      unsubscribeListener?.();
     };
   }, [toast]);
 

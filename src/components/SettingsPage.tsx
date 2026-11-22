@@ -74,6 +74,7 @@ import { READ_ALOUD_SPEEDS } from "../utils/readAloudSpeed";
 import { SectionLabel } from "./ui/SectionLabel";
 import { setAgentName as persistAgentName } from "../utils/agentName";
 import { resolveImportedHistoryLimit } from "../utils/historyLimitImport";
+import { cardStateForCudaProgress } from "../utils/cudaDownloadProgress";
 
 /**
  * The Settings tabs, and nothing else.
@@ -391,13 +392,10 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
       // stale "Update available".
       const phase = data?.phase || "downloading";
       setDownloadPhase(phase);
-      if (phase === "done") {
-        setDownloadState("done");
-        refreshStatus();
-      } else {
-        setDownloadState("downloading");
-        setDownloadError(null);
-      }
+      const next = cardStateForCudaProgress(phase, data?.error);
+      setDownloadState(next.state);
+      setDownloadError(next.error);
+      if (next.state !== "downloading") refreshStatus();
     });
     return () => cleanup?.();
   }, [refreshStatus]);
@@ -684,13 +682,10 @@ function GpuStatusCard({
   useEffect(() => {
     const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
       setDownloadProgress(Math.round(data?.percent ?? data?.progress ?? 0));
-      if (data?.phase === "done") {
-        setDownloadState("done");
-        refreshCudaStatus();
-      } else {
-        setDownloadState("downloading");
-        setDownloadError(null);
-      }
+      const next = cardStateForCudaProgress(data?.phase, data?.error);
+      setDownloadState(next.state);
+      setDownloadError(next.error);
+      if (next.state !== "downloading") refreshCudaStatus();
     });
     return () => cleanup?.();
   }, [refreshCudaStatus]);

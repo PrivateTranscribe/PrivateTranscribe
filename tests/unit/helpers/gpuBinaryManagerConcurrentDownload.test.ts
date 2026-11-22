@@ -135,6 +135,43 @@ describe("GpuBinaryManager concurrent downloads", () => {
     await expect(running).resolves.toMatchObject({ success: true });
   });
 
+  it.each([
+    [
+      { success: false, error: "HTTP 503" },
+      { phase: "failed", error: "HTTP 503" },
+    ],
+    [
+      { success: false, error: "Download cancelled" },
+      { phase: "cancelled", error: null },
+    ],
+  ])("ends a %o download with a last event every card can follow", async (result, last) => {
+    // A card that joined a download it did not start (the startup update, the
+    // other card) only sees these events. With no last one on failure or
+    // cancel, it showed "Downloading" until Settings was closed.
+    const broadcast = vi.fn();
+    manager.setDownloadProgressListener(broadcast);
+    manager._runCudaDownload = vi.fn(async () => {
+      manager._emitProgress({ phase: "downloading", percent: 40 });
+      return result;
+    });
+
+    await expect(manager.downloadCudaBinary()).resolves.toEqual(result);
+
+    expect(broadcast.mock.calls.map(([p]) => p.phase)).toEqual(["downloading", last.phase]);
+    expect(broadcast.mock.calls.at(-1)[0]).toMatchObject(last);
+    expect(manager.getDownloadState()).toEqual({ downloading: false, progress: null });
+  });
+
+  it("sends no failure event after a successful download", async () => {
+    const broadcast = vi.fn();
+    manager.setDownloadProgressListener(broadcast);
+    const { finish } = stubDownload(manager);
+    const running = manager.downloadCudaBinary();
+    finish();
+    await running;
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
   it("allows a fresh download after the previous one finished", async () => {
     const firstRun = stubDownload(manager);
     const first = manager.downloadCudaBinary();

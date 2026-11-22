@@ -80,6 +80,8 @@ const HEALTH_CHECK_TIMEOUT_MS = 2000;
 // server silent for that long is treated as hung and restarted.
 const BUSY_SERVER_RECHECK_MS = 1000;
 const BUSY_SERVER_WAIT_LIMIT_MS = 30000;
+// Error code for a start refused because a file transcription holds the server.
+const WHISPER_BUSY_WITH_FILE = "WHISPER_BUSY_WITH_FILE";
 const DEFAULT_INPUT_EXTENSION = ".webm";
 const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
 const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
@@ -310,6 +312,10 @@ class WhisperServerManager {
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     this.activeTranscriptions = 0;
+    // File runs in progress, from before their model starts loading until
+    // their last piece (beginFileRun/endFileRun). A dictation that needs
+    // another model is refused meanwhile, since the restart would kill them.
+    this.activeFileTranscriptions = 0;
     // A settings change arrived while a transcription was in flight; the
     // restart it needs happens on the first start after that work.
     this.restartPendingForSettings = false;
@@ -820,6 +826,28 @@ class WhisperServerManager {
       return this.startupPromise;
     }
 
+    // A file run can take an hour. Restarting under it for a dictation on
+    // another model threw away every piece it had finished, so the dictation
+    // is refused instead and the user is told why. Checked again after any
+    // startup this one queues behind, which may be the file's own.
+    const refuseForFileRun = () => {
+      if (
+        options.fileMode === true ||
+        this.activeFileTranscriptions === 0 ||
+        (this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime)
+      ) {
+        return;
+      }
+      debugLogger.info("whisper-server is transcribing a file; refusing a restart for", {
+        modelPath,
+        loadedModelPath: this.loadedModelPath,
+      });
+      throw Object.assign(new Error("A file is being transcribed"), {
+        code: WHISPER_BUSY_WITH_FILE,
+      });
+    };
+    refuseForFileRun();
+
     // A different model was requested (or no startup was in progress).
     // We must serialise through the existing in-flight promise (if any) so that
     // we never run _doStart concurrently.  Assign both startupPromise and
@@ -847,6 +875,7 @@ class WhisperServerManager {
           return;
         }
         if (await this._keepBusyServer(modelPath, wantsPrintRealtime)) return;
+        refuseForFileRun();
         if (this.process) await this.stop();
         this.restartPendingForSettings = false;
         await this._doStart(modelPath, options);
@@ -1386,6 +1415,19 @@ class WhisperServerManager {
 
   isProcessing() {
     return this.activeTranscriptions > 0;
+  }
+
+  /**
+   * A file run holds the server from before its model starts loading until
+   * its last piece. Counting only inside transcribe() left the model load
+   * open, and a dictation queued behind it restarted the server anyway.
+   */
+  beginFileRun() {
+    this.activeFileTranscriptions += 1;
+  }
+
+  endFileRun() {
+    this.activeFileTranscriptions = Math.max(0, this.activeFileTranscriptions - 1);
   }
 
   async transcribe(audioBuffer, options = {}) {
@@ -2300,3 +2342,4 @@ module.exports.detectServerBackend = detectServerBackend;
 // manager, IPC), so the predicate that identifies it lives in one place.
 module.exports.isCancelledError = isCancelledError;
 module.exports.createCancelledError = createCancelledError;
+module.exports.WHISPER_BUSY_WITH_FILE = WHISPER_BUSY_WITH_FILE;

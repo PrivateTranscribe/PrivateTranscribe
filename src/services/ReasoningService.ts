@@ -1481,21 +1481,24 @@ class ReasoningService {
       if (window.localStorage?.getItem("reasoningModel") === "claude-code") {
         return Boolean((await window.electronAPI?.agentModeRewriteStatus?.())?.available);
       }
-      const openaiKey = await window.electronAPI?.getOpenAIKey?.();
-      const anthropicKey = await window.electronAPI?.getAnthropicKey?.();
-      const geminiKey = await window.electronAPI?.getGeminiKey?.();
-      const groqKey = await window.electronAPI?.getGroqKey?.();
-      const localAvailable = await window.electronAPI?.checkLocalReasoningAvailable?.();
+      // Only the provider the cleanup request goes to counts. A key for another
+      // provider used to make cleanup "available", so a dictation without the
+      // selected provider's key failed every time instead of being skipped.
+      const model = window.localStorage?.getItem("reasoningModel")?.trim() || "";
+      const provider = getModelProvider(model, this.getSelectedProvider());
+      const checks: Record<string, (() => Promise<unknown>) | undefined> = {
+        openai: window.electronAPI?.getOpenAIKey,
+        anthropic: window.electronAPI?.getAnthropicKey,
+        gemini: window.electronAPI?.getGeminiKey,
+        groq: window.electronAPI?.getGroqKey,
+        local: window.electronAPI?.checkLocalReasoningAvailable,
+      };
+      const check = checks[provider];
+      const available = check ? Boolean(await check()) : false;
 
-      logger.logReasoning("API_KEY_CHECK", {
-        hasOpenAI: !!openaiKey,
-        hasAnthropic: !!anthropicKey,
-        hasGemini: !!geminiKey,
-        hasGroq: !!groqKey,
-        hasLocal: !!localAvailable,
-      });
+      logger.logReasoning("API_KEY_CHECK", { provider, available });
 
-      return !!(openaiKey || anthropicKey || geminiKey || groqKey || localAvailable);
+      return available;
     } catch (error) {
       logger.logReasoning("API_KEY_CHECK_ERROR", {
         error: (error as Error).message,

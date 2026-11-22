@@ -847,8 +847,12 @@ async function startApp() {
       winGestureController.cancel();
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
+        // Sent once the listener's own restarts are used up, or at once for a
+        // hotkey it cannot watch, or a listener Windows would not run. The
+        // overlay tells the user.
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
           reason: "error",
+          kind: error.reason || "crashed",
           message: error.message,
         });
       }
