@@ -1,0 +1,181 @@
+import { describe, expect, it, vi } from "vitest";
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { matchCommand } = require("../../../src/helpers/narrator/commands");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { toSpeakable, splitSentences } = require("../../../src/helpers/narrator/spokenText");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  NarratorRewriter,
+  parseRewrite,
+  templateRewrite,
+  buildInput,
+  rewriterEnv,
+  rewriterArgs,
+} = require("../../../src/helpers/narrator/rewriter");
+
+describe("narrator commands", () => {
+  it.each([
+    ["Hvad er nyt?", "brief", "da"],
+    ["hvad er der nyt", "brief", "da"],
+    ["Okay, hvad er nyt?", "brief", "da"],
+    ["What's new?", "brief", "en"],
+    ["catch me up", "brief", "en"],
+    ["Fortæl mere.", "more", "da"],
+    ["Tell me more", "more", "en"],
+    ["Følg den chat", "follow", "da"],
+    ["Follow that chat.", "follow", "en"],
+    ["Stop!", "stop", "da"],
+    ["be quiet", "stop", "en"],
+  ])("hears %j as %s in %s", (text, command, language) => {
+    expect(matchCommand(text)).toEqual({ command, language });
+  });
+
+  it.each(["I told him that what's new is the build", "ja", "yes", "godkend det", "push it", ""])(
+    "does not treat %j as a command",
+    (text) => {
+      expect(matchCommand(text)).toBeNull();
+    }
+  );
+});
+
+describe("narrator spoken text", () => {
+  it("never reads paths, links, file names, code or hashes aloud", () => {
+    const spoken = toSpeakable(
+      "Fixed `parseLine()` in src/helpers/narrator/router.js and C:\\Users\\x\\a.txt, see https://example.com/pr/1 (commit 4b71005a)."
+    );
+    expect(spoken).not.toMatch(/router\.js|C:\\|https|4b71005a|parseLine\(\)/);
+    expect(spoken).toMatch(/^Fixed/);
+  });
+
+  it("keeps plain words in backticks", () => {
+    expect(toSpeakable("The `narrator` page")).toBe("The narrator page");
+  });
+
+  it("redacts secrets before anything is spoken", () => {
+    expect(toSpeakable("Set API_KEY=sk-live-abcdef1234567890 and retry.")).not.toContain("sk-live");
+  });
+
+  it("splits sentences without cutting decimals", () => {
+    expect(splitSentences("Version 1.5 is out. Next step: test it! Done?")).toEqual([
+      "Version 1.5 is out.",
+      "Next step: test it!",
+      "Done?",
+    ]);
+  });
+});
+
+describe("narrator rewriter", () => {
+  it("runs the CLI as a fresh terminal would, without the session that started the app", () => {
+    const env = rewriterEnv({
+      PATH: "C:\\bin",
+      CLAUDE_CONFIG_DIR: "D:\\claude",
+      CLAUDECODE: "1",
+      CLAUDE_CODE_ENTRYPOINT: "claude-desktop",
+      CLAUDE_CODE_SESSION_ID: "session",
+      CLAUDE_CODE_MESSAGING_TOKEN: "not-a-real-token",
+      CLAUDE_EFFORT: "max",
+      anthropic_api_key: "not-a-real-key",
+    });
+    expect(env).toEqual({ PATH: "C:\\bin", CLAUDE_CONFIG_DIR: "D:\\claude" });
+  });
+
+  it("keeps the user's own Claude Code setup, with or without a session", () => {
+    const setup = {
+      PATH: "C:\\bin",
+      CLAUDE_CODE_USE_BEDROCK: "1",
+      CLAUDE_CODE_SKIP_BEDROCK_AUTH: "1",
+      CLAUDE_CODE_CLIENT_CERT: "D:\\certs\\client.pem",
+      CLAUDE_CODE_GIT_BASH_PATH: "D:\\Git\\bin\\bash.exe",
+      CLAUDE_CODE_OAUTH_TOKEN: "not-a-real-token",
+      ANTHROPIC_BASE_URL: "https://gateway.example",
+    };
+    expect(rewriterEnv({ ...setup, CLAUDECODE: "1", CLAUDE_EFFORT: "max" })).toEqual(setup);
+    expect(rewriterEnv({ ...setup, CLAUDE_EFFORT: "high", ANTHROPIC_API_KEY: "x" })).toEqual({
+      ...setup,
+      CLAUDE_EFFORT: "high",
+    });
+  });
+
+  it("gives the CLI no tools, no MCP servers, no settings files and no saved session", () => {
+    const args: string[] = rewriterArgs({ model: "claude-haiku-5-5", systemPrompt: "Rewrite." });
+    const after = (flag: string) => args[args.indexOf(flag) + 1];
+    expect(after("--model")).toBe("claude-haiku-5-5");
+    expect(after("--tools")).toBe("");
+    expect(after("--setting-sources")).toBe("");
+    expect(after("--system-prompt")).toBe("Rewrite.");
+    expect(args).toEqual(
+      expect.arrayContaining(["--strict-mcp-config", "--no-session-persistence"])
+    );
+  });
+
+  it("reads the JSON out of a model reply with text around it", () => {
+    expect(
+      parseRewrite('Here:\n```json\n{"spoken":"Hej.","card":"Kort","more":"Mere."}\n```')
+    ).toEqual({
+      spoken: "Hej.",
+      card: "Kort",
+      more: "Mere.",
+    });
+    expect(parseRewrite("no json")).toBeNull();
+    expect(parseRewrite('{"card":"x"}')).toBeNull();
+  });
+
+  it("reads an array for several items and refuses one of the wrong length", () => {
+    expect(parseRewrite('[{"spoken":"A."},{"spoken":"B.","card":"b"}]', 2)).toEqual([
+      { spoken: "A.", card: "", more: "" },
+      { spoken: "B.", card: "b", more: "" },
+    ]);
+    expect(parseRewrite('[{"spoken":"A."}]', 2)).toBeNull();
+  });
+
+  it("asks the model once for a brief, and falls back to templates on a bad reply", async () => {
+    const client = {
+      warm: vi.fn(),
+      close: vi.fn(),
+      request: vi.fn(
+        async () =>
+          '[{"spoken":"Første.","card":"1","more":"m"},{"spoken":"Anden.","card":"2","more":"m"}]'
+      ),
+    };
+    const rewriter = new NarratorRewriter({ client });
+    const items = [
+      { kind: "finished", chatTitle: "A", recap: "One." },
+      { kind: "waiting", chatTitle: "B", ask: "Two?" },
+    ];
+    const results = await rewriter.rewriteMany(items, "da");
+    expect(client.request).toHaveBeenCalledTimes(1);
+    expect(results.map((result: { spoken: string }) => result.spoken)).toEqual([
+      "Første.",
+      "Anden.",
+    ]);
+
+    client.request.mockResolvedValueOnce("not json");
+    const fallback = await rewriter.rewriteMany(items, "en");
+    expect(fallback.map((result: { byModel: boolean }) => result.byModel)).toEqual([false, false]);
+    expect(rewriter.lastError).toMatchObject({ code: "bad-reply" });
+  });
+
+  it("falls back to a template that leads with the chat and the ask", () => {
+    const result = templateRewrite(
+      {
+        kind: "waiting",
+        chatTitle: "Export fix",
+        ask: "Push to main?",
+        recap: "Fixed. Tests pass.",
+      },
+      "da"
+    );
+    expect(result.spoken).toBe("Export fix venter på dig. Push to main?");
+    expect(result.byModel).toBe(false);
+    expect(
+      templateRewrite({ kind: "finished", chatTitle: "", recap: "Done. More." }, "en").spoken
+    ).toBe("A chat has finished. Done.");
+  });
+
+  it("redacts what it sends to the model", () => {
+    expect(
+      buildInput({ chatTitle: "x", kind: "finished", recap: "password: hunter2hunter2" })
+    ).not.toContain("hunter2");
+  });
+});

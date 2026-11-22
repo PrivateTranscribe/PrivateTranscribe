@@ -102,6 +102,8 @@ class WindowManager {
     this._lastInteractivityRefreshAt = 0;
     this._deferredInteractivityRefreshTimer = null;
     this._overlayInteractiveRegions = new Map();
+    /** Takes a dictation key event before the overlay sees it; see setDictationKeyFilter. */
+    this.dictationKeyFilter = null;
 
     this._registerExitHandlers();
     this._loadPersistedOverlayMode();
@@ -965,6 +967,10 @@ class WindowManager {
 
       if (!(await this._microphoneAllowedOrOpenSetup())) return;
 
+      if (this._dictationKeyTaken({ type: "toggle" })) {
+        return;
+      }
+
       // While the overlay is snoozed or off, keep it invisible and send the
       // dictation IPC to the hidden renderer. It handles audio recording
       // without any visible overlay, eliminating DWM lag in windowed games —
@@ -988,11 +994,39 @@ class WindowManager {
     };
   }
 
+  /**
+   * Lets another part of the app take dictation key events before the overlay
+   * sees them: the narrator's answer window does, for a short while after it
+   * asks a question. The filter gets {type, holdToken?} with type "toggle",
+   * "start", "stop", "cancel", "hybrid-down" or "hybrid-up", and returns true
+   * for an event it took. Anything else, a throw included, goes on to
+   * dictation unchanged.
+   */
+  setDictationKeyFilter(filter) {
+    this.dictationKeyFilter = typeof filter === "function" ? filter : null;
+  }
+
+  _dictationKeyTaken(event) {
+    if (!this.dictationKeyFilter) return false;
+    try {
+      return this.dictationKeyFilter(event) === true;
+    } catch (error) {
+      debugLogger.warn("Dictation key filter failed; the key dictates", {
+        error: error?.message || String(error),
+      });
+      return false;
+    }
+  }
+
   async sendToggleDictation() {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
     if (!(await this._microphoneAllowedOrOpenSetup())) return;
+
+    if (this._dictationKeyTaken({ type: "toggle" })) {
+      return;
+    }
 
     if (this.isOverlaySuppressed()) {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
@@ -1022,6 +1056,10 @@ class WindowManager {
     }
     if (!(await this._microphoneAllowedOrOpenSetup())) return;
 
+    if (this._dictationKeyTaken({ type: "start", holdToken })) {
+      return;
+    }
+
     // While the overlay is snoozed or off, create the window hidden (not shown)
     // and send dictation IPC to it. The hidden renderer handles audio recording
     // without any visible overlay, eliminating DWM lag in windowed games.
@@ -1046,6 +1084,10 @@ class WindowManager {
       return;
     }
 
+    if (this._dictationKeyTaken({ type: "stop" })) {
+      return;
+    }
+
     // While the overlay is snoozed or off, send stop to the hidden main window
     if (this.isOverlaySuppressed()) {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -1067,6 +1109,10 @@ class WindowManager {
    */
   sendCancelDictation(holdToken) {
     if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this._dictationKeyTaken({ type: "cancel", holdToken })) {
       return;
     }
 
@@ -1124,6 +1170,10 @@ class WindowManager {
       return;
     }
 
+    if (this._dictationKeyTaken({ type: "hybrid-down" })) {
+      return;
+    }
+
     if (this.isOverlaySuppressed()) {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
         await this.createMainWindow();
@@ -1142,6 +1192,10 @@ class WindowManager {
 
   sendHybridDictationKeyUp() {
     if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this._dictationKeyTaken({ type: "hybrid-up" })) {
       return;
     }
 

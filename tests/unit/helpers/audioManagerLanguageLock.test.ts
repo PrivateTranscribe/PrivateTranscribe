@@ -23,6 +23,7 @@ vi.mock("../../../src/utils/languageCompat", () => ({
 }));
 
 import AudioManager from "../../../src/helpers/audioManager";
+import { resolveTranscriptionLanguage } from "../../../src/utils/languageCompat";
 
 const audioBlob = { type: "audio/webm", size: 1024, arrayBuffer: async () => new ArrayBuffer(8) };
 
@@ -67,6 +68,32 @@ describe("AudioManager long-session language lock", () => {
     });
 
     expect(transcribeLocalWhisper.mock.calls[0][1]).toMatchObject({ language: "da" });
+  });
+
+  it("hears a spoken answer in the question's language, over a pinned language and translation", async () => {
+    // Danish pinned for dictation, English question: the answer must come back
+    // as the English words the choices are written in.
+    vi.mocked(resolveTranscriptionLanguage).mockReturnValue("da");
+    localStorageMock.setItem("translateToEnglish", "on");
+    const manager: any = new AudioManager();
+
+    try {
+      await manager.processWithLocalWhisper(audioBlob, "turbo", {
+        source: "narrator-answer",
+        skipPostProcessing: true,
+        answerLanguage: "en",
+      });
+      await manager.processWithLocalWhisper(audioBlob, "turbo", {
+        source: "dictation",
+      });
+    } finally {
+      vi.mocked(resolveTranscriptionLanguage).mockReturnValue(null);
+    }
+
+    expect(transcribeLocalWhisper.mock.calls[0][1]).toMatchObject({ language: "en" });
+    expect(transcribeLocalWhisper.mock.calls[0][1].translate).toBeUndefined();
+    // A dictation still uses the pinned language.
+    expect(transcribeLocalWhisper.mock.calls[1][1]).toMatchObject({ language: "da" });
   });
 
   it("does not start translating just because a language got locked", async () => {

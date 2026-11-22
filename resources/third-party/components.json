@@ -73,11 +73,12 @@
         "bin/windows-fast-paste.exe",
         "bin/windows-mic-watch.exe",
         "bin/windows-hold-key.exe",
+        "bin/windows-audio-meter.exe",
         "readaloud-copy-worker.ps1",
         "readaloud-highlight-worker.ps1"
       ],
       "licenseText": "licenses/GPL-3.0.txt",
-      "note": "PrivateTranscribe's own code, not a third-party part. The helpers are built from resources/windows-key-listener.c, windows-fast-paste.cs, windows-mic-watch.cs and windows-hold-key.cs in the PrivateTranscribe repository, and are released under the GNU GPL, version 3 or later, like the rest of PrivateTranscribe. windows-key-listener.c arrived with the first commit, which imported the OpenWhispr-derived code, so the OpenWhispr notice covers anything in it that still derives from OpenWhispr."
+      "note": "PrivateTranscribe's own code, not a third-party part. The helpers are built from resources/windows-key-listener.c, windows-fast-paste.cs, windows-mic-watch.cs, windows-hold-key.cs and windows-audio-meter.cs in the PrivateTranscribe repository, and are released under the GNU GPL, version 3 or later, like the rest of PrivateTranscribe. windows-key-listener.c arrived with the first commit, which imported the OpenWhispr-derived code, so the OpenWhispr notice covers anything in it that still derives from OpenWhispr."
     },
     {
       "name": "Electron (with Chromium, Node.js and V8)",

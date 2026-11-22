@@ -8,6 +8,7 @@ import {
   MessagesSquare,
   AudioLines,
   Zap,
+  Headphones,
 } from "lucide-react";
 import type { PageId } from "./AppSidebar";
 import { isBetaFeature } from "../utils/betaFeatures";
@@ -26,8 +27,8 @@ export interface NavGroup {
 
 /**
  * Every feature the app has. Beta pages are listed only while beta features are
- * on, except AI Enhancement: its coding prompt shortcuts are not beta. Converse
- * and the Action Engine also wait for experimental features.
+ * on, except AI Enhancement: its coding prompt shortcuts are not beta. Converse,
+ * the Narrator and the Action Engine also wait for experimental features.
  */
 export const navGroups: NavGroup[] = [
   {
@@ -50,6 +51,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
       { id: "converse", label: "Converse", icon: MessagesSquare },
+      { id: "narrator", label: "Narrator", icon: Headphones },
     ],
   },
   {

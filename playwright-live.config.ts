@@ -1,9 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * Config for e2e specs that spend LIVE Claude prompts from the subscription
- * (tests/e2e/*.live.ts). Deliberately separate from playwright.config.ts so
- * the default `npm run test:e2e` suite can never spend a prompt by accident.
+ * Config for LIVE e2e specs (tests/e2e/*.live.ts): ones that spend Claude
+ * prompts from the subscription, or play sound and turn this PC's other apps
+ * down. Deliberately separate from playwright.config.ts so the default
+ * `npm run test:e2e` suite can never do either by accident.
  *
  * Run one explicitly, e.g.:
  *   npx playwright test --config playwright-live.config.ts tests/e2e/converse-permission.live.ts
