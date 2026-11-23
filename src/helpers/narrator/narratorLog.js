@@ -24,7 +24,12 @@ class NarratorLog {
     this.recent = null;
   }
 
-  /** @param {{kind: string, result?: string, chatId?: string, chatTitle?: string, text?: string, language?: string, latencyMs?: number|null}} entry */
+  /**
+   * A voice question is written with its `id` and `chars` (how long it was)
+   * and without `text`, `chatId` or `chatTitle`.
+   *
+   * @param {{kind: string, result?: string, id?: string, chars?: number, chatId?: string, chatTitle?: string, text?: string, language?: string, latencyMs?: number|null}} entry
+   */
   append(entry) {
     const at = this.now();
     this._entries().push({ at, kind: entry.kind });
